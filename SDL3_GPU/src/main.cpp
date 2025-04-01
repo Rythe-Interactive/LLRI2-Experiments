@@ -4,17 +4,35 @@
 
 #include <string>
 
+#ifdef NDEBUG
+	constexpr bool debug_mode = false;
+#else
+constexpr bool debug_mode = true;
+#endif
+
 struct MyAppState {
 	std::string name = "Hello, SDL3's GPU API!";
 	SDL_Window* window = nullptr;
-	SDL_Renderer* renderer = nullptr;
+	SDL_GPUDevice* device = nullptr;
 };
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	MyAppState* myAppState = new MyAppState();
 
-	if (!SDL_CreateWindowAndRenderer(myAppState->name.c_str(), 1280, 720, 0, &myAppState->window, &myAppState->renderer)) {
-		SDL_Log("Couldn't create window and renderer: %s", SDL_GetError());
+	myAppState->window = SDL_CreateWindow(myAppState->name.c_str(), 1280, 720, 0);
+	if (myAppState->window == nullptr) {
+		SDL_Log("Couldn't create window: %s", SDL_GetError());
+		return SDL_APP_FAILURE;
+	}
+
+	myAppState->device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, debug_mode, "vulkan");
+	if (myAppState->device == nullptr) {
+		SDL_Log("Couldn't create GPU device: %s", SDL_GetError());
+		return SDL_APP_FAILURE;
+	}
+
+	if (!SDL_ClaimWindowForGPUDevice(myAppState->device, myAppState->window)) {
+		SDL_Log("Couldn't claim window for GPU device: %s", SDL_GetError());
 		return SDL_APP_FAILURE;
 	}
 
@@ -35,21 +53,30 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 SDL_AppResult SDL_AppIterate(void* appstate) {
 	const MyAppState* myAppState = static_cast<MyAppState*>(appstate);
 
-	int w = 0, h = 0;
-	constexpr float scale = 4.0f;
+	SDL_GPUCommandBuffer* commandBuffer = SDL_AcquireGPUCommandBuffer(myAppState->device);
+	if (commandBuffer == nullptr) {
+		SDL_Log("AcquireGPUCommandBuffer failed: %s", SDL_GetError());
+		return SDL_APP_FAILURE;
+	}
 
-	// Center the message and scale it up
-	SDL_GetRenderOutputSize(myAppState->renderer, &w, &h);
-	SDL_SetRenderScale(myAppState->renderer, scale, scale);
-	const float x = (static_cast<float>(w) / scale - SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE * myAppState->name.length()) / 2;
-	const float y = (static_cast<float>(h) / scale - SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE) / 2;
+	SDL_GPUTexture* swapchainTexture;
+	if (!SDL_WaitAndAcquireGPUSwapchainTexture(commandBuffer, myAppState->window, &swapchainTexture, nullptr, nullptr)) {
+		SDL_Log("WaitAndAcquireGPUSwapchainTexture failed: %s", SDL_GetError());
+		return SDL_APP_FAILURE;
+	}
 
-	// Draw the message
-	SDL_SetRenderDrawColor(myAppState->renderer, 0, 0, 0, 255);
-	SDL_RenderClear(myAppState->renderer);
-	SDL_SetRenderDrawColor(myAppState->renderer, 255, 255, 255, 255);
-	SDL_RenderDebugText(myAppState->renderer, x, y, myAppState->name.c_str());
-	SDL_RenderPresent(myAppState->renderer);
+	if (swapchainTexture != nullptr) {
+		SDL_GPUColorTargetInfo colorTargetInfo = {nullptr};
+		colorTargetInfo.texture = swapchainTexture;
+		colorTargetInfo.clear_color = SDL_FColor{0.3f, 0.4f, 0.5f, 1.0f};
+		colorTargetInfo.load_op = SDL_GPU_LOADOP_CLEAR;
+		colorTargetInfo.store_op = SDL_GPU_STOREOP_STORE;
+
+		SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(commandBuffer, &colorTargetInfo, 1, nullptr);
+		SDL_EndGPURenderPass(renderPass);
+	}
+
+	SDL_SubmitGPUCommandBuffer(commandBuffer);
 
 	return SDL_APP_CONTINUE;
 }
