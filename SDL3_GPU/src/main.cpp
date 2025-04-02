@@ -10,11 +10,17 @@
 constexpr bool debug_mode = true;
 #endif
 
+typedef struct PositionColorVertex {
+	float x, y, z;
+	Uint8 r, g, b, a;
+} PositionColorVertex;
+
 struct MyAppState {
 	std::string name = "Hello, SDL3's GPU API!";
 	SDL_Window* window = nullptr;
 	SDL_GPUDevice* device = nullptr;
 	SDL_GPUGraphicsPipeline* pipeline = nullptr;
+	SDL_GPUBuffer* vertexBuffer = nullptr;
 };
 
 SDL_GPUShader* LoadShader(
@@ -74,6 +80,7 @@ SDL_GPUShader* LoadShader(
 	return shader;
 }
 
+// ReSharper disable twice CppParameterNeverUsed
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	MyAppState* myAppState = new MyAppState();
 
@@ -111,6 +118,32 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	const SDL_GPUGraphicsPipelineCreateInfo pipelineCreateInfo = SDL_GPUGraphicsPipelineCreateInfo{
 		.vertex_shader = vertexShader,
 		.fragment_shader = fragmentShader,
+		.vertex_input_state = SDL_GPUVertexInputState{
+			.vertex_buffer_descriptions = (SDL_GPUVertexBufferDescription[]){
+				SDL_GPUVertexBufferDescription{
+					.slot = 0,
+					.pitch = sizeof(PositionColorVertex),
+					.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX,
+					.instance_step_rate = 0,
+				},
+			},
+			.num_vertex_buffers = 1,
+			.vertex_attributes = (SDL_GPUVertexAttribute[]){
+				SDL_GPUVertexAttribute{
+					.location = 0,
+					.buffer_slot = 0,
+					.format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+					.offset = 0,
+				},
+				SDL_GPUVertexAttribute{
+					.location = 1,
+					.buffer_slot = 0,
+					.format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM,
+					.offset = sizeof(float) * 3,
+				},
+			},
+			.num_vertex_attributes = 2,
+		},
 		.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
 		.rasterizer_state = SDL_GPURasterizerState{
 			.fill_mode = SDL_GPU_FILLMODE_FILL,
@@ -133,6 +166,51 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 
 	SDL_ReleaseGPUShader(myAppState->device, vertexShader);
 	SDL_ReleaseGPUShader(myAppState->device, fragmentShader);
+
+	//Vertex buffer
+	constexpr SDL_GPUBufferCreateInfo vertexBufferCreateInfo = SDL_GPUBufferCreateInfo{
+		.usage = SDL_GPU_BUFFERUSAGE_VERTEX,
+		.size = sizeof(PositionColorVertex) * 3,
+	};
+
+	myAppState->vertexBuffer = SDL_CreateGPUBuffer(myAppState->device, &vertexBufferCreateInfo);
+
+	constexpr SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo = SDL_GPUTransferBufferCreateInfo{
+		.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+		.size = sizeof(PositionColorVertex) * 3,
+	};
+
+	SDL_GPUTransferBuffer* transferBuffer = SDL_CreateGPUTransferBuffer(myAppState->device, &transferBufferCreateInfo);
+
+	PositionColorVertex* transferData = static_cast<PositionColorVertex*>(SDL_MapGPUTransferBuffer(myAppState->device, transferBuffer, false));
+
+	transferData[0] = PositionColorVertex{-1, -1, 0, 255, 0, 0, 255};
+	transferData[1] = PositionColorVertex{1, -1, 0, 0, 255, 0, 255};
+	transferData[2] = PositionColorVertex{0, 1, 0, 0, 0, 255, 255};
+
+	SDL_UnmapGPUTransferBuffer(myAppState->device, transferBuffer);
+
+	// Upload the transfer data to the vertex buffer
+	SDL_GPUCommandBuffer* uploadCmdBuf = SDL_AcquireGPUCommandBuffer(myAppState->device);
+	SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(uploadCmdBuf);
+
+	const SDL_GPUTransferBufferLocation bufferLocation = SDL_GPUTransferBufferLocation{
+		.transfer_buffer = transferBuffer,
+		.offset = 0
+	};
+
+	const SDL_GPUBufferRegion bufferRegion = SDL_GPUBufferRegion{
+		.buffer = myAppState->vertexBuffer,
+		.offset = 0,
+		.size = sizeof(PositionColorVertex) * 3
+	};
+
+	SDL_UploadToGPUBuffer(copyPass, &bufferLocation, &bufferRegion, false);
+
+	SDL_EndGPUCopyPass(copyPass);
+	SDL_SubmitGPUCommandBuffer(uploadCmdBuf);
+	SDL_ReleaseGPUTransferBuffer(myAppState->device, transferBuffer);
+
 
 	return SDL_APP_CONTINUE;
 }
@@ -172,6 +250,11 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 		SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(commandBuffer, &colorTargetInfo, 1, nullptr);
 
 		SDL_BindGPUGraphicsPipeline(renderPass, myAppState->pipeline);
+		const SDL_GPUBufferBinding bufferBinding = {
+			.buffer = myAppState->vertexBuffer,
+			.offset = 0,
+		};
+		SDL_BindGPUVertexBuffers(renderPass, 0, &bufferBinding, 1);
 		SDL_DrawGPUPrimitives(renderPass, 3, 1, 0, 0);
 
 		SDL_EndGPURenderPass(renderPass);
@@ -186,6 +269,7 @@ void SDL_AppQuit(void* appstate, SDL_AppResult result) {
 	const MyAppState* myAppState = static_cast<MyAppState*>(appstate);
 
 	SDL_ReleaseGPUGraphicsPipeline(myAppState->device, myAppState->pipeline);
+	SDL_ReleaseGPUBuffer(myAppState->device, myAppState->vertexBuffer);
 
 	delete myAppState;
 }
