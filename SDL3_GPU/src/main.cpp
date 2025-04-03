@@ -243,7 +243,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	SDL_UploadToGPUBuffer(copyPass, &indexBufferLocation, &indexBufferRegion, false);
 
 	SDL_EndGPUCopyPass(copyPass);
-	if (SDL_SubmitGPUCommandBuffer(uploadCmdBuf)) {
+	if (!SDL_SubmitGPUCommandBuffer(uploadCmdBuf)) {
 		SDL_Log("Couldn't submit command buffer: %s", SDL_GetError());
 		return SDL_APP_FAILURE;
 	}
@@ -312,7 +312,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 		SDL_EndGPURenderPass(renderPass);
 	}
 
-	if (SDL_SubmitGPUCommandBuffer(commandBuffer)) {
+	if (!SDL_SubmitGPUCommandBuffer(commandBuffer)) {
 		SDL_Log("Couldn't submit command buffer: %s", SDL_GetError());
 		return SDL_APP_FAILURE;
 	}
