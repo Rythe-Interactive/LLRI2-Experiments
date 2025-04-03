@@ -49,7 +49,6 @@ SDL_GPUShader* LoadShader(
 		SDL_Log("Device does not support SPIR-V shaders!");
 		return nullptr;
 	}
-	const char* entrypoint = "main";
 	const std::string fullPath = std::string(SDL_GetBasePath()) + "assets/shaders/compiled/" + shaderFilename + ".spv";
 
 	size_t codeSize;
@@ -59,6 +58,7 @@ SDL_GPUShader* LoadShader(
 		return nullptr;
 	}
 
+	const char* entrypoint = "main";
 	const SDL_GPUShaderCreateInfo shaderInfo = SDL_GPUShaderCreateInfo{
 		.code_size = codeSize,
 		.code = static_cast<Uint8*>(code),
@@ -72,7 +72,7 @@ SDL_GPUShader* LoadShader(
 	};
 	SDL_GPUShader* shader = SDL_CreateGPUShader(device, &shaderInfo);
 	if (shader == nullptr) {
-		SDL_Log("Failed to create shader!");
+		SDL_Log("Couldn't create shader!");
 		SDL_free(code);
 		return nullptr;
 	}
@@ -84,38 +84,44 @@ SDL_GPUShader* LoadShader(
 // ReSharper disable twice CppParameterNeverUsed
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	MyAppState* myAppState = new MyAppState();
+	*appstate = myAppState;
 
+	// Window
 	myAppState->window = SDL_CreateWindow(myAppState->name.c_str(), 1280, 720, 0);
 	if (myAppState->window == nullptr) {
 		SDL_Log("Couldn't create window: %s", SDL_GetError());
 		return SDL_APP_FAILURE;
 	}
 
+	// GPU Device
 	myAppState->device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, debug_mode, "vulkan");
 	if (myAppState->device == nullptr) {
 		SDL_Log("Couldn't create GPU device: %s", SDL_GetError());
 		return SDL_APP_FAILURE;
 	}
 
+	// Bind GPU Device to Window
 	if (!SDL_ClaimWindowForGPUDevice(myAppState->device, myAppState->window)) {
 		SDL_Log("Couldn't claim window for GPU device: %s", SDL_GetError());
 		return SDL_APP_FAILURE;
 	}
 
-	*appstate = myAppState;
-
+	// Shaders
+	// > Vertex Shader
 	SDL_GPUShader* vertexShader = LoadShader(myAppState->device, "triangle.vert", 0, 0, 0, 0);
 	if (vertexShader == nullptr) {
 		SDL_Log("Couldn't create vertex shader!");
 		return SDL_APP_FAILURE;
 	}
 
+	// > Fragment Shader
 	SDL_GPUShader* fragmentShader = LoadShader(myAppState->device, "triangle.frag", 0, 0, 0, 0);
 	if (fragmentShader == nullptr) {
 		SDL_Log("Couldn't create fragment shader!");
 		return SDL_APP_FAILURE;
 	}
 
+	// Pipeline
 	SDL_GPUVertexBufferDescription vertexBufferDescriptions[]{
 		SDL_GPUVertexBufferDescription{
 			.slot = 0,
@@ -171,32 +177,29 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	SDL_ReleaseGPUShader(myAppState->device, vertexShader);
 	SDL_ReleaseGPUShader(myAppState->device, fragmentShader);
 
-	//GPU Resources
-
-	//>Vertex Buffer
+	// GPU Resources
+	// > Vertex Buffer
 	constexpr SDL_GPUBufferCreateInfo vertexBufferCreateInfo = SDL_GPUBufferCreateInfo{
 		.usage = SDL_GPU_BUFFERUSAGE_VERTEX,
 		.size = sizeof(PositionColorVertex) * 4,
 	};
-
 	myAppState->vertexBuffer = SDL_CreateGPUBuffer(myAppState->device, &vertexBufferCreateInfo);
 
-	//>Index Buffer
+	// > Index Buffer
 	constexpr SDL_GPUBufferCreateInfo indexBufferCreateInfo = SDL_GPUBufferCreateInfo{
 		.usage = SDL_GPU_BUFFERUSAGE_INDEX,
 		.size = sizeof(Uint16) * 6,
 	};
-
 	myAppState->indexBuffer = SDL_CreateGPUBuffer(myAppState->device, &indexBufferCreateInfo);
 
-	//Transfer
+	// Transfer
 	constexpr SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo = SDL_GPUTransferBufferCreateInfo{
 		.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
 		.size = sizeof(PositionColorVertex) * 4 + sizeof(Uint16) * 6,
 	};
-
 	SDL_GPUTransferBuffer* bufferTransferBuffer = SDL_CreateGPUTransferBuffer(myAppState->device, &transferBufferCreateInfo);
 
+	// Request space from the GPU Driver to put our data into
 	PositionColorVertex* transferData = static_cast<PositionColorVertex*>(SDL_MapGPUTransferBuffer(myAppState->device, bufferTransferBuffer, false));
 
 	constexpr float radius = 0.8f;
@@ -213,12 +216,15 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	indexData[4] = 2;
 	indexData[5] = 3;
 
+	// Release the space we requested from the GPU Driver again
 	SDL_UnmapGPUTransferBuffer(myAppState->device, bufferTransferBuffer);
 
-	// Upload the transfer data to the vertex buffer
+
+	// Command Buffer to copy the data to the GPU
 	SDL_GPUCommandBuffer* uploadCmdBuf = SDL_AcquireGPUCommandBuffer(myAppState->device);
 	SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(uploadCmdBuf);
 
+	// > Upload the vertex buffer
 	const SDL_GPUTransferBufferLocation vertexBufferLocation = SDL_GPUTransferBufferLocation{
 		.transfer_buffer = bufferTransferBuffer,
 		.offset = 0,
@@ -232,6 +238,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 
 	SDL_UploadToGPUBuffer(copyPass, &vertexBufferLocation, &vertexBufferRegion, false);
 
+	// > Upload the index buffer
 	const SDL_GPUTransferBufferLocation indexBufferLocation = SDL_GPUTransferBufferLocation{
 		.transfer_buffer = bufferTransferBuffer,
 		.offset = sizeof(PositionColorVertex) * 4,
