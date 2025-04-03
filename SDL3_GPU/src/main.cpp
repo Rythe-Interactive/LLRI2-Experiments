@@ -55,7 +55,7 @@ SDL_GPUShader* LoadShader(
 	size_t codeSize;
 	void* code = SDL_LoadFile(fullPath.c_str(), &codeSize);
 	if (code == nullptr) {
-		SDL_Log("Couldn't load shader from disk! %s", fullPath);
+		SDL_Log("Couldn't load shader from disk! %s", fullPath.c_str());
 		return nullptr;
 	}
 
@@ -243,7 +243,10 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	SDL_UploadToGPUBuffer(copyPass, &indexBufferLocation, &indexBufferRegion, false);
 
 	SDL_EndGPUCopyPass(copyPass);
-	SDL_SubmitGPUCommandBuffer(uploadCmdBuf);
+	if (SDL_SubmitGPUCommandBuffer(uploadCmdBuf)) {
+		SDL_Log("Couldn't submit command buffer: %s", SDL_GetError());
+		return SDL_APP_FAILURE;
+	}
 	SDL_ReleaseGPUTransferBuffer(myAppState->device, bufferTransferBuffer);
 
 
@@ -304,12 +307,15 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 		SDL_BindGPUIndexBuffer(renderPass, &indexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
 
 
-		SDL_DrawGPUIndexedPrimitives(renderPass,6, 1, 0, 0, 0);
+		SDL_DrawGPUIndexedPrimitives(renderPass, 6, 1, 0, 0, 0);
 
 		SDL_EndGPURenderPass(renderPass);
 	}
 
-	SDL_SubmitGPUCommandBuffer(commandBuffer);
+	if (SDL_SubmitGPUCommandBuffer(commandBuffer)) {
+		SDL_Log("Couldn't submit command buffer: %s", SDL_GetError());
+		return SDL_APP_FAILURE;
+	}
 
 	return SDL_APP_CONTINUE;
 }
