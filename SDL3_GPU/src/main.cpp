@@ -21,6 +21,7 @@ struct MyAppState {
 	SDL_GPUDevice* device = nullptr;
 	SDL_GPUGraphicsPipeline* pipeline = nullptr;
 	SDL_GPUBuffer* vertexBuffer = nullptr;
+	SDL_GPUBuffer* indexBuffer = nullptr;
 };
 
 SDL_GPUShader* LoadShader(
@@ -167,49 +168,83 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	SDL_ReleaseGPUShader(myAppState->device, vertexShader);
 	SDL_ReleaseGPUShader(myAppState->device, fragmentShader);
 
-	//Vertex buffer
+	//GPU Resources
+
+	//>Vertex Buffer
 	constexpr SDL_GPUBufferCreateInfo vertexBufferCreateInfo = SDL_GPUBufferCreateInfo{
 		.usage = SDL_GPU_BUFFERUSAGE_VERTEX,
-		.size = sizeof(PositionColorVertex) * 3,
+		.size = sizeof(PositionColorVertex) * 4,
 	};
 
 	myAppState->vertexBuffer = SDL_CreateGPUBuffer(myAppState->device, &vertexBufferCreateInfo);
 
-	constexpr SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo = SDL_GPUTransferBufferCreateInfo{
-		.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-		.size = sizeof(PositionColorVertex) * 3,
+	//>Index Buffer
+	constexpr SDL_GPUBufferCreateInfo indexBufferCreateInfo = SDL_GPUBufferCreateInfo{
+		.usage = SDL_GPU_BUFFERUSAGE_INDEX,
+		.size = sizeof(Uint16) * 6,
 	};
 
-	SDL_GPUTransferBuffer* transferBuffer = SDL_CreateGPUTransferBuffer(myAppState->device, &transferBufferCreateInfo);
+	myAppState->indexBuffer = SDL_CreateGPUBuffer(myAppState->device, &indexBufferCreateInfo);
 
-	PositionColorVertex* transferData = static_cast<PositionColorVertex*>(SDL_MapGPUTransferBuffer(myAppState->device, transferBuffer, false));
+	//Transfer
+	constexpr SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo = SDL_GPUTransferBufferCreateInfo{
+		.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+		.size = sizeof(PositionColorVertex) * 4 + sizeof(Uint16) * 6,
+	};
 
-	transferData[0] = PositionColorVertex{-1, -1, 0, 255, 0, 0, 255};
-	transferData[1] = PositionColorVertex{1, -1, 0, 0, 255, 0, 255};
-	transferData[2] = PositionColorVertex{0, 1, 0, 0, 0, 255, 255};
+	SDL_GPUTransferBuffer* bufferTransferBuffer = SDL_CreateGPUTransferBuffer(myAppState->device, &transferBufferCreateInfo);
 
-	SDL_UnmapGPUTransferBuffer(myAppState->device, transferBuffer);
+	PositionColorVertex* transferData = static_cast<PositionColorVertex*>(SDL_MapGPUTransferBuffer(myAppState->device, bufferTransferBuffer, false));
+
+	constexpr float radius = 0.8f;
+	transferData[0] = PositionColorVertex{-radius, radius, 0, 255, 0, 0, 255};
+	transferData[1] = PositionColorVertex{radius, radius, 0, 0, 255, 0, 255};
+	transferData[2] = PositionColorVertex{radius, -radius, 0, 0, 0, 255, 255};
+	transferData[3] = PositionColorVertex{-radius, -radius, 0, 255, 255, 255, 255};
+
+	Uint16* indexData = reinterpret_cast<Uint16*>(&transferData[4]);
+	indexData[0] = 0;
+	indexData[1] = 1;
+	indexData[2] = 2;
+	indexData[3] = 0;
+	indexData[4] = 2;
+	indexData[5] = 3;
+
+	SDL_UnmapGPUTransferBuffer(myAppState->device, bufferTransferBuffer);
 
 	// Upload the transfer data to the vertex buffer
 	SDL_GPUCommandBuffer* uploadCmdBuf = SDL_AcquireGPUCommandBuffer(myAppState->device);
 	SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(uploadCmdBuf);
 
-	const SDL_GPUTransferBufferLocation bufferLocation = SDL_GPUTransferBufferLocation{
-		.transfer_buffer = transferBuffer,
-		.offset = 0
+	const SDL_GPUTransferBufferLocation vertexBufferLocation = SDL_GPUTransferBufferLocation{
+		.transfer_buffer = bufferTransferBuffer,
+		.offset = 0,
 	};
 
-	const SDL_GPUBufferRegion bufferRegion = SDL_GPUBufferRegion{
+	const SDL_GPUBufferRegion vertexBufferRegion = SDL_GPUBufferRegion{
 		.buffer = myAppState->vertexBuffer,
 		.offset = 0,
-		.size = sizeof(PositionColorVertex) * 3
+		.size = sizeof(PositionColorVertex) * 4,
 	};
 
-	SDL_UploadToGPUBuffer(copyPass, &bufferLocation, &bufferRegion, false);
+	SDL_UploadToGPUBuffer(copyPass, &vertexBufferLocation, &vertexBufferRegion, false);
+
+	const SDL_GPUTransferBufferLocation indexBufferLocation = SDL_GPUTransferBufferLocation{
+		.transfer_buffer = bufferTransferBuffer,
+		.offset = sizeof(PositionColorVertex) * 4,
+	};
+
+	const SDL_GPUBufferRegion indexBufferRegion = SDL_GPUBufferRegion{
+		.buffer = myAppState->indexBuffer,
+		.offset = 0,
+		.size = sizeof(Uint16) * 6,
+	};
+
+	SDL_UploadToGPUBuffer(copyPass, &indexBufferLocation, &indexBufferRegion, false);
 
 	SDL_EndGPUCopyPass(copyPass);
 	SDL_SubmitGPUCommandBuffer(uploadCmdBuf);
-	SDL_ReleaseGPUTransferBuffer(myAppState->device, transferBuffer);
+	SDL_ReleaseGPUTransferBuffer(myAppState->device, bufferTransferBuffer);
 
 
 	return SDL_APP_CONTINUE;
@@ -255,12 +290,21 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 		SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(commandBuffer, &colorTargetInfo, 1, nullptr);
 
 		SDL_BindGPUGraphicsPipeline(renderPass, myAppState->pipeline);
-		const SDL_GPUBufferBinding bufferBinding = {
+
+		const SDL_GPUBufferBinding vertexBufferBinding = {
 			.buffer = myAppState->vertexBuffer,
 			.offset = 0,
 		};
-		SDL_BindGPUVertexBuffers(renderPass, 0, &bufferBinding, 1);
-		SDL_DrawGPUPrimitives(renderPass, 3, 1, 0, 0);
+		SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBufferBinding, 1);
+
+		const SDL_GPUBufferBinding indexBufferBinding = {
+			.buffer = myAppState->indexBuffer,
+			.offset = 0,
+		};
+		SDL_BindGPUIndexBuffer(renderPass, &indexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
+
+
+		SDL_DrawGPUIndexedPrimitives(renderPass,6, 1, 0, 0, 0);
 
 		SDL_EndGPURenderPass(renderPass);
 	}
