@@ -26,5 +26,10 @@
       <option name="/Default/CodeStyle/CodeFormatting/CppFormatting/WRAP_LINES/@EntryValue" value="false" type="bool" />
       <option name="/Default/CodeStyle/CodeFormatting/CppFormatting/INDENT_CASE_FROM_SWITCH/@EntryValue" value="true" type="bool" />
     </RiderCodeStyleSettings>
+    <codeStyleSettings language="CMake">
+      <indentOptions>
+        <option name="USE_TAB_CHARACTER" value="true" />
+      </indentOptions>
+    </codeStyleSettings>
   </code_scheme>
 </component>

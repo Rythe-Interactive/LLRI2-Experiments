@@ -116,33 +116,40 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 		return SDL_APP_FAILURE;
 	}
 
+	SDL_GPUVertexBufferDescription vertexBufferDescriptions[]{
+		SDL_GPUVertexBufferDescription{
+			.slot = 0,
+			.pitch = sizeof(PositionColorVertex),
+			.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX,
+			.instance_step_rate = 0,
+		},
+	};
+	SDL_GPUVertexAttribute vertexAttributes[]{
+		SDL_GPUVertexAttribute{
+			.location = 0,
+			.buffer_slot = 0,
+			.format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+			.offset = 0,
+		},
+		SDL_GPUVertexAttribute{
+			.location = 1,
+			.buffer_slot = 0,
+			.format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM,
+			.offset = sizeof(float) * 3,
+		},
+	};
+	SDL_GPUColorTargetDescription colorTargetDescriptions[]{
+		SDL_GPUColorTargetDescription{
+			.format = SDL_GetGPUSwapchainTextureFormat(myAppState->device, myAppState->window)
+		}
+	};
 	const SDL_GPUGraphicsPipelineCreateInfo pipelineCreateInfo = SDL_GPUGraphicsPipelineCreateInfo{
 		.vertex_shader = vertexShader,
 		.fragment_shader = fragmentShader,
 		.vertex_input_state = SDL_GPUVertexInputState{
-			.vertex_buffer_descriptions = (SDL_GPUVertexBufferDescription[]){
-				SDL_GPUVertexBufferDescription{
-					.slot = 0,
-					.pitch = sizeof(PositionColorVertex),
-					.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX,
-					.instance_step_rate = 0,
-				},
-			},
+			.vertex_buffer_descriptions = vertexBufferDescriptions,
 			.num_vertex_buffers = 1,
-			.vertex_attributes = (SDL_GPUVertexAttribute[]){
-				SDL_GPUVertexAttribute{
-					.location = 0,
-					.buffer_slot = 0,
-					.format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
-					.offset = 0,
-				},
-				SDL_GPUVertexAttribute{
-					.location = 1,
-					.buffer_slot = 0,
-					.format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM,
-					.offset = sizeof(float) * 3,
-				},
-			},
+			.vertex_attributes = vertexAttributes,
 			.num_vertex_attributes = 2,
 		},
 		.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
@@ -150,11 +157,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 			.fill_mode = SDL_GPU_FILLMODE_FILL,
 		},
 		.target_info = SDL_GPUGraphicsPipelineTargetInfo{
-			.color_target_descriptions = (SDL_GPUColorTargetDescription[]){
-				SDL_GPUColorTargetDescription{
-					.format = SDL_GetGPUSwapchainTextureFormat(myAppState->device, myAppState->window)
-				}
-			},
+			.color_target_descriptions = colorTargetDescriptions,
 			.num_color_targets = 1,
 		},
 	};
