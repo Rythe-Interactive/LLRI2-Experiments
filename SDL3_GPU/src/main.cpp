@@ -5,15 +5,16 @@
 #include <string>
 
 #ifdef NDEBUG
-	constexpr bool debug_mode = false;
+constexpr bool debug_mode = false;
 #else
 constexpr bool debug_mode = true;
 #endif
 
-typedef struct PositionColorVertex {
+struct MyVertex {
 	float x, y, z;
+	float u, v;
 	Uint8 r, g, b, a;
-} PositionColorVertex;
+};
 
 struct MyAppState {
 	std::string name = "Hello, SDL3's GPU API!";
@@ -22,6 +23,8 @@ struct MyAppState {
 	SDL_GPUGraphicsPipeline* pipeline = nullptr;
 	SDL_GPUBuffer* vertexBuffer = nullptr;
 	SDL_GPUBuffer* indexBuffer = nullptr;
+	SDL_GPUTexture* texture = nullptr;
+	SDL_GPUSampler* sampler = nullptr;
 };
 
 SDL_GPUShader* LoadShader(
@@ -81,6 +84,32 @@ SDL_GPUShader* LoadShader(
 	return shader;
 }
 
+SDL_Surface* LoadImage(const std::string& imageFilename, const int desiredChannels) {
+	const std::string fullPath = std::string(SDL_GetBasePath()) + "assets/images/" + imageFilename;
+
+	SDL_Surface* result = SDL_LoadBMP(fullPath.c_str());
+	if (result == nullptr) {
+		SDL_Log("Couldn't load BMP: %s", SDL_GetError());
+		return nullptr;
+	}
+
+	SDL_PixelFormat format;
+	if (desiredChannels == 4) {
+		format = SDL_PIXELFORMAT_ABGR8888;
+	} else {
+		SDL_assert(!"Unexpected desiredChannels");
+		SDL_DestroySurface(result);
+		return nullptr;
+	}
+	if (result->format != format) {
+		SDL_Surface* next = SDL_ConvertSurface(result, format);
+		SDL_DestroySurface(result);
+		result = next;
+	}
+
+	return result;
+}
+
 // ReSharper disable twice CppParameterNeverUsed
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	MyAppState* myAppState = new MyAppState();
@@ -115,9 +144,16 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	}
 
 	// > Fragment Shader
-	SDL_GPUShader* fragmentShader = LoadShader(myAppState->device, "triangle.frag", 0, 0, 0, 0);
+	SDL_GPUShader* fragmentShader = LoadShader(myAppState->device, "triangle.frag", 1, 0, 0, 0);
 	if (fragmentShader == nullptr) {
 		SDL_Log("Couldn't create fragment shader!");
+		return SDL_APP_FAILURE;
+	}
+
+	// Texture Image
+	SDL_Surface* imageData = LoadImage("container.bmp", 4);
+	if (imageData == nullptr) {
+		SDL_Log("Couldn't load image data!");
 		return SDL_APP_FAILURE;
 	}
 
@@ -125,7 +161,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	SDL_GPUVertexBufferDescription vertexBufferDescriptions[]{
 		SDL_GPUVertexBufferDescription{
 			.slot = 0,
-			.pitch = sizeof(PositionColorVertex),
+			.pitch = sizeof(MyVertex),
 			.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX,
 			.instance_step_rate = 0,
 		},
@@ -140,8 +176,14 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 		SDL_GPUVertexAttribute{
 			.location = 1,
 			.buffer_slot = 0,
-			.format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM,
+			.format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
 			.offset = sizeof(float) * 3,
+		},
+		SDL_GPUVertexAttribute{
+			.location = 2,
+			.buffer_slot = 0,
+			.format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM,
+			.offset = sizeof(float) * 3 + sizeof(float) * 2,
 		},
 	};
 	SDL_GPUColorTargetDescription colorTargetDescriptions[]{
@@ -156,7 +198,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 			.vertex_buffer_descriptions = vertexBufferDescriptions,
 			.num_vertex_buffers = 1,
 			.vertex_attributes = vertexAttributes,
-			.num_vertex_attributes = 2,
+			.num_vertex_attributes = 3,
 		},
 		.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
 		.rasterizer_state = SDL_GPURasterizerState{
@@ -177,11 +219,22 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	SDL_ReleaseGPUShader(myAppState->device, vertexShader);
 	SDL_ReleaseGPUShader(myAppState->device, fragmentShader);
 
+	// (Texture) Sampler
+	SDL_GPUSamplerCreateInfo samplerCreateInfo = SDL_GPUSamplerCreateInfo{
+		.min_filter = SDL_GPU_FILTER_LINEAR,
+		.mag_filter = SDL_GPU_FILTER_LINEAR,
+		.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
+		.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+		.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+		.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+	};
+	myAppState->sampler = SDL_CreateGPUSampler(myAppState->device, &samplerCreateInfo);
+
 	// GPU Resources
 	// > Vertex Buffer
 	constexpr SDL_GPUBufferCreateInfo vertexBufferCreateInfo = SDL_GPUBufferCreateInfo{
 		.usage = SDL_GPU_BUFFERUSAGE_VERTEX,
-		.size = sizeof(PositionColorVertex) * 4,
+		.size = sizeof(MyVertex) * 4,
 	};
 	myAppState->vertexBuffer = SDL_CreateGPUBuffer(myAppState->device, &vertexBufferCreateInfo);
 
@@ -192,72 +245,113 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	};
 	myAppState->indexBuffer = SDL_CreateGPUBuffer(myAppState->device, &indexBufferCreateInfo);
 
-	// Transfer
-	constexpr SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo = SDL_GPUTransferBufferCreateInfo{
-		.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-		.size = sizeof(PositionColorVertex) * 4 + sizeof(Uint16) * 6,
+	// > Texture
+	unsigned int texWidth = imageData->w;
+	unsigned int texHeight = imageData->h;
+	SDL_GPUTextureCreateInfo textureCreateInfo = SDL_GPUTextureCreateInfo{
+		.type = SDL_GPU_TEXTURETYPE_2D,
+		.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+		.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
+		.width = texWidth,
+		.height = texHeight,
+		.layer_count_or_depth = 1,
+		.num_levels = 1,
 	};
-	SDL_GPUTransferBuffer* bufferTransferBuffer = SDL_CreateGPUTransferBuffer(myAppState->device, &transferBufferCreateInfo);
+	myAppState->texture = SDL_CreateGPUTexture(myAppState->device, &textureCreateInfo);
 
-	// Request space from the GPU Driver to put our data into
-	PositionColorVertex* transferData = static_cast<PositionColorVertex*>(SDL_MapGPUTransferBuffer(myAppState->device, bufferTransferBuffer, false));
+	// Transfer Buffer for the vertex and index buffers
+	constexpr SDL_GPUTransferBufferCreateInfo bufferTransferBufferCreateInfo = SDL_GPUTransferBufferCreateInfo{
+		.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+		.size = sizeof(MyVertex) * 4 + sizeof(Uint16) * 6,
+	};
+	SDL_GPUTransferBuffer* bufferTransferBuffer = SDL_CreateGPUTransferBuffer(myAppState->device, &bufferTransferBufferCreateInfo); //(transfer buffer for the _buffers_ as opposed to the _texture_)
 
-	constexpr float radius = 0.8f;
-	transferData[0] = PositionColorVertex{-radius, radius, 0, 255, 0, 0, 255};
-	transferData[1] = PositionColorVertex{radius, radius, 0, 0, 255, 0, 255};
-	transferData[2] = PositionColorVertex{radius, -radius, 0, 0, 0, 255, 255};
-	transferData[3] = PositionColorVertex{-radius, -radius, 0, 255, 255, 255, 255};
+	// Request space from the GPU Driver to put our buffers data into
+	MyVertex* transferData = static_cast<MyVertex*>(SDL_MapGPUTransferBuffer(myAppState->device, bufferTransferBuffer, false));
 
+	// Copy the vertex data into the transfer buffer
+	constexpr float radius = 0.5f;
+	//positions, texture coords, colours from LearnOpenGL
+	transferData[0] = MyVertex{ radius,  radius, 0.0f, 1.0f, 1.0f, 255,   0,   0}; // top right
+	transferData[1] = MyVertex{ radius, -radius, 0.0f, 1.0f, 0.0f,   0, 255,   0}; // bottom right
+	transferData[2] = MyVertex{-radius, -radius, 0.0f, 0.0f, 0.0f,   0,   0, 255}; // bottom left
+	transferData[3] = MyVertex{-radius,  radius, 0.0f, 0.0f, 1.0f, 255, 255,   0}; // top left
+
+	// Copy the index data into the transfer buffer
 	Uint16* indexData = reinterpret_cast<Uint16*>(&transferData[4]);
 	indexData[0] = 0;
 	indexData[1] = 1;
-	indexData[2] = 2;
-	indexData[3] = 0;
+	indexData[2] = 3;
+	indexData[3] = 1;
 	indexData[4] = 2;
 	indexData[5] = 3;
 
 	// Release the space we requested from the GPU Driver again
 	SDL_UnmapGPUTransferBuffer(myAppState->device, bufferTransferBuffer);
 
+	// Transfer Buffer for the Texture
+	SDL_GPUTransferBufferCreateInfo textureTransferBufferCreateInfo = SDL_GPUTransferBufferCreateInfo{
+		.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+		.size = texWidth * texHeight * 4,
+	};
+	SDL_GPUTransferBuffer* textureTransferBuffer = SDL_CreateGPUTransferBuffer(myAppState->device, &textureTransferBufferCreateInfo); //(transfer buffer for the _texture_ as opposed to the _buffers_)
+
+	// Request space from the GPU Driver to put our texture data into
+	Uint8* textureTransferPtr = static_cast<Uint8*>(SDL_MapGPUTransferBuffer(myAppState->device, textureTransferBuffer, false));
+	// Copy the image data into the transfer buffer
+	SDL_memcpy(textureTransferPtr, imageData->pixels, texWidth * texHeight * 4);
+	// Release the space we requested from the GPU Driver again
+	SDL_UnmapGPUTransferBuffer(myAppState->device, textureTransferBuffer);
 
 	// Command Buffer to copy the data to the GPU
-	SDL_GPUCommandBuffer* uploadCmdBuf = SDL_AcquireGPUCommandBuffer(myAppState->device);
-	SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(uploadCmdBuf);
+	SDL_GPUCommandBuffer* uploadCommandBuffer = SDL_AcquireGPUCommandBuffer(myAppState->device);
+	SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(uploadCommandBuffer);
 
 	// > Upload the vertex buffer
 	const SDL_GPUTransferBufferLocation vertexBufferLocation = SDL_GPUTransferBufferLocation{
 		.transfer_buffer = bufferTransferBuffer,
 		.offset = 0,
 	};
-
 	const SDL_GPUBufferRegion vertexBufferRegion = SDL_GPUBufferRegion{
 		.buffer = myAppState->vertexBuffer,
 		.offset = 0,
-		.size = sizeof(PositionColorVertex) * 4,
+		.size = sizeof(MyVertex) * 4,
 	};
-
 	SDL_UploadToGPUBuffer(copyPass, &vertexBufferLocation, &vertexBufferRegion, false);
 
 	// > Upload the index buffer
 	const SDL_GPUTransferBufferLocation indexBufferLocation = SDL_GPUTransferBufferLocation{
 		.transfer_buffer = bufferTransferBuffer,
-		.offset = sizeof(PositionColorVertex) * 4,
+		.offset = sizeof(MyVertex) * 4,
 	};
-
 	const SDL_GPUBufferRegion indexBufferRegion = SDL_GPUBufferRegion{
 		.buffer = myAppState->indexBuffer,
 		.offset = 0,
 		.size = sizeof(Uint16) * 6,
 	};
-
 	SDL_UploadToGPUBuffer(copyPass, &indexBufferLocation, &indexBufferRegion, false);
 
+	// > Upload the texture
+	const SDL_GPUTextureTransferInfo textureTransferInfo = SDL_GPUTextureTransferInfo{
+		.transfer_buffer = textureTransferBuffer,
+		.offset = 0,
+	};
+	const SDL_GPUTextureRegion textureRegion = SDL_GPUTextureRegion{
+		.texture = myAppState->texture,
+		.w = texWidth,
+		.h = texHeight,
+		.d = 1,
+	};
+	SDL_UploadToGPUTexture(copyPass, &textureTransferInfo, &textureRegion, false);
+
 	SDL_EndGPUCopyPass(copyPass);
-	if (!SDL_SubmitGPUCommandBuffer(uploadCmdBuf)) {
-		SDL_Log("Couldn't submit command buffer: %s", SDL_GetError());
+	if (!SDL_SubmitGPUCommandBuffer(uploadCommandBuffer)) {
+		SDL_Log("Couldn't submit upload command buffer: %s", SDL_GetError());
 		return SDL_APP_FAILURE;
 	}
+	SDL_DestroySurface(imageData);
 	SDL_ReleaseGPUTransferBuffer(myAppState->device, bufferTransferBuffer);
+	SDL_ReleaseGPUTransferBuffer(myAppState->device, textureTransferBuffer);
 
 
 	return SDL_APP_CONTINUE;
@@ -316,6 +410,11 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 		};
 		SDL_BindGPUIndexBuffer(renderPass, &indexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
 
+		const SDL_GPUTextureSamplerBinding textureSamplerBinding = {
+			.texture = myAppState->texture,
+			.sampler = myAppState->sampler,
+		};
+		SDL_BindGPUFragmentSamplers(renderPass, 0, &textureSamplerBinding, 1);
 
 		SDL_DrawGPUIndexedPrimitives(renderPass, 6, 1, 0, 0, 0);
 
@@ -335,6 +434,9 @@ void SDL_AppQuit(void* appstate, SDL_AppResult result) {
 
 	SDL_ReleaseGPUGraphicsPipeline(myAppState->device, myAppState->pipeline);
 	SDL_ReleaseGPUBuffer(myAppState->device, myAppState->vertexBuffer);
+	SDL_ReleaseGPUBuffer(myAppState->device, myAppState->indexBuffer);
+	SDL_ReleaseGPUTexture(myAppState->device, myAppState->texture);
+	SDL_ReleaseGPUSampler(myAppState->device, myAppState->sampler);
 
 	delete myAppState;
 }
