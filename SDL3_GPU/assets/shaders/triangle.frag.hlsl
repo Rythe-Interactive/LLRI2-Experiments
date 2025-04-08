@@ -1,6 +1,6 @@
 struct Input
 {
-	float2 TexCoord : TEXCOORD1;
+	float2 TexCoord : TEXCOORD0;
 };
 
 Texture2D<float4> Texture : register(t0, space2);
