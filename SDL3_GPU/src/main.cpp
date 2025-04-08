@@ -4,6 +4,10 @@
 
 #include <string>
 
+// Rythe Math
+#define RSL_DEFAULT_ALIGNED_MATH false
+#include <vector/vector.hpp>
+
 #ifdef NDEBUG
 constexpr bool debug_mode = false;
 #else
@@ -11,8 +15,8 @@ constexpr bool debug_mode = true;
 #endif
 
 struct MyVertex {
-	float x, y, z;
-	float u, v;
+	rsl::math::float3 pos;
+	rsl::math::float2 tex;
 };
 
 struct MyAppState {
@@ -267,10 +271,10 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	// Copy the vertex data into the transfer buffer
 	constexpr float radius = 0.5f;
 	//positions, texture coords, colours from LearnOpenGL
-	transferData[0] = MyVertex{ radius,  radius, 0.0f, 1.0f, 1.0f }; // top right
-	transferData[1] = MyVertex{ radius, -radius, 0.0f, 1.0f, 0.0f }; // bottom right
-	transferData[2] = MyVertex{-radius, -radius, 0.0f, 0.0f, 0.0f }; // bottom left
-	transferData[3] = MyVertex{-radius,  radius, 0.0f, 0.0f, 1.0f }; // top left
+	transferData[0] = MyVertex{{ radius,  radius, 0.0f}, {1.0f, 1.0f},}; // top right
+	transferData[1] = MyVertex{{ radius, -radius, 0.0f}, {1.0f, 0.0f},}; // bottom right
+	transferData[2] = MyVertex{{-radius, -radius, 0.0f}, {0.0f, 0.0f},}; // bottom left
+	transferData[3] = MyVertex{{-radius,  radius, 0.0f}, {0.0f, 1.0f},}; // top left
 
 	// Copy the index data into the transfer buffer
 	Uint16* indexData = reinterpret_cast<Uint16*>(&transferData[4]);
