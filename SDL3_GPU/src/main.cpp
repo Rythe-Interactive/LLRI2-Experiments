@@ -13,7 +13,6 @@ constexpr bool debug_mode = true;
 struct MyVertex {
 	float x, y, z;
 	float u, v;
-	Uint8 r, g, b, a;
 };
 
 struct MyAppState {
@@ -167,23 +166,19 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 		},
 	};
 	SDL_GPUVertexAttribute vertexAttributes[]{
+		// position
 		SDL_GPUVertexAttribute{
 			.location = 0,
 			.buffer_slot = 0,
 			.format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
 			.offset = 0,
 		},
+		// texture coordinate
 		SDL_GPUVertexAttribute{
 			.location = 1,
 			.buffer_slot = 0,
 			.format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
 			.offset = sizeof(float) * 3,
-		},
-		SDL_GPUVertexAttribute{
-			.location = 2,
-			.buffer_slot = 0,
-			.format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM,
-			.offset = sizeof(float) * 3 + sizeof(float) * 2,
 		},
 	};
 	SDL_GPUColorTargetDescription colorTargetDescriptions[]{
@@ -198,7 +193,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 			.vertex_buffer_descriptions = vertexBufferDescriptions,
 			.num_vertex_buffers = 1,
 			.vertex_attributes = vertexAttributes,
-			.num_vertex_attributes = 3,
+			.num_vertex_attributes = 2,
 		},
 		.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
 		.rasterizer_state = SDL_GPURasterizerState{
@@ -272,10 +267,10 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	// Copy the vertex data into the transfer buffer
 	constexpr float radius = 0.5f;
 	//positions, texture coords, colours from LearnOpenGL
-	transferData[0] = MyVertex{ radius,  radius, 0.0f, 1.0f, 1.0f, 255,   0,   0}; // top right
-	transferData[1] = MyVertex{ radius, -radius, 0.0f, 1.0f, 0.0f,   0, 255,   0}; // bottom right
-	transferData[2] = MyVertex{-radius, -radius, 0.0f, 0.0f, 0.0f,   0,   0, 255}; // bottom left
-	transferData[3] = MyVertex{-radius,  radius, 0.0f, 0.0f, 1.0f, 255, 255,   0}; // top left
+	transferData[0] = MyVertex{ radius,  radius, 0.0f, 1.0f, 1.0f }; // top right
+	transferData[1] = MyVertex{ radius, -radius, 0.0f, 1.0f, 0.0f }; // bottom right
+	transferData[2] = MyVertex{-radius, -radius, 0.0f, 0.0f, 0.0f }; // bottom left
+	transferData[3] = MyVertex{-radius,  radius, 0.0f, 0.0f, 1.0f }; // top left
 
 	// Copy the index data into the transfer buffer
 	Uint16* indexData = reinterpret_cast<Uint16*>(&transferData[4]);
