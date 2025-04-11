@@ -120,7 +120,8 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	*appstate = myAppState;
 
 	// Window
-	myAppState->window = SDL_CreateWindow(myAppState->name.c_str(), 1280, 720, 0);
+	SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE;
+	myAppState->window = SDL_CreateWindow(myAppState->name.c_str(), 1280, 720, flags);
 	if (myAppState->window == nullptr) {
 		SDL_Log("Couldn't create window: %s", SDL_GetError());
 		return SDL_APP_FAILURE;
