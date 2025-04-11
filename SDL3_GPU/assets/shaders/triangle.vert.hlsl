@@ -1,6 +1,11 @@
+cbuffer UniformBlock : register(b0, space1)
+{
+	float4x4 MatrixTransform : packoffset(c0);
+};
+
 struct Input
 {
-	float3 Position : SV_Position;
+	float4 Position : SV_Position; //apparently you can just say float4, even though we send a float3..? oh well. saves a conversion step later on in the actual shader code TODO: Ask about this
 	float2 TexCoord : TEXCOORD0;
 };
 
@@ -14,6 +19,6 @@ Output main(Input input)
 {
 	Output output;
 	output.TexCoord = input.TexCoord;
-	output.Position = float4(input.Position, 1.0f);
+	output.Position = mul(MatrixTransform, input.Position);
 	return output;
 }

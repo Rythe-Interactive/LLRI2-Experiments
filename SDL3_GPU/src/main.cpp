@@ -7,6 +7,7 @@
 // Rythe Math
 #define RSL_DEFAULT_ALIGNED_MATH false
 #include <vector/vector.hpp>
+#include <matrix/matrix.hpp>
 
 #ifdef NDEBUG
 constexpr bool debug_mode = false;
@@ -140,7 +141,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 
 	// Shaders
 	// > Vertex Shader
-	SDL_GPUShader* vertexShader = LoadShader(myAppState->device, "triangle.vert", 0, 0, 0, 0);
+	SDL_GPUShader* vertexShader = LoadShader(myAppState->device, "triangle.vert", 0, 1, 0, 0);
 	if (vertexShader == nullptr) {
 		SDL_Log("Couldn't create vertex shader!");
 		return SDL_APP_FAILURE;
@@ -416,6 +417,12 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 			.sampler = myAppState->sampler,
 		};
 		SDL_BindGPUFragmentSamplers(renderPass, 0, &textureSamplerBinding, 1);
+
+		//Uniforms
+		rsl::math::float4x4 trans = rsl::math::float4x4(1.0f);
+		trans = translate(trans, rsl::math::float3(0.5f, -0.5f, 0.0f));
+		trans = rotate(trans, static_cast<float>(SDL_GetTicks()) / 1000.0f, rsl::math::float3(0.0f, 0.0f, 1.0f));
+		SDL_PushGPUVertexUniformData(commandBuffer, 0, &trans, sizeof(trans));
 
 		SDL_DrawGPUIndexedPrimitives(renderPass, 6, 1, 0, 0, 0);
 
