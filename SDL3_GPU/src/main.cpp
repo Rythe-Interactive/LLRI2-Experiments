@@ -142,7 +142,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 
 	// Shaders
 	// > Vertex Shader
-	SDL_GPUShader* vertexShader = LoadShader(myAppState->device, "triangle.vert", 0, 1, 0, 0);
+	SDL_GPUShader* vertexShader = LoadShader(myAppState->device, "triangle.vert", 0, 3, 0, 0);
 	if (vertexShader == nullptr) {
 		SDL_Log("Couldn't create vertex shader!");
 		return SDL_APP_FAILURE;
@@ -420,10 +420,23 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 		SDL_BindGPUFragmentSamplers(renderPass, 0, &textureSamplerBinding, 1);
 
 		//Uniforms
-		rsl::math::float4x4 trans = rsl::math::float4x4(1.0f);
-		trans = translate(trans, rsl::math::float3(0.5f, -0.5f, 0.0f));
-		trans = rotate(trans, static_cast<float>(SDL_GetTicks()) / 1000.0f, rsl::math::float3(0.0f, 0.0f, 1.0f));
-		SDL_PushGPUVertexUniformData(commandBuffer, 0, &trans, sizeof(trans));
+		// > Model Matrix
+		rsl::math::float4x4 model = rsl::math::float4x4(1.0f);
+		model = rotate(model, rsl::math::deg2rad(-55.0f), rsl::math::float3(-1.0f, 0.0f, 0.0f));
+		SDL_PushGPUVertexUniformData(commandBuffer, 0, &model, sizeof(model));
+
+		// > View Matrix
+		rsl::math::float4x4 view = rsl::math::float4x4(1.0f);
+		view = translate(view, rsl::math::float3(0.0f, 0.0f, 3.0f));
+		SDL_PushGPUVertexUniformData(commandBuffer, 1, &view, sizeof(view));
+
+		// > Projection Matrix
+		rsl::math::int2 screenSize;
+		SDL_GetWindowSize(myAppState->window, &screenSize.x, &screenSize.y);
+		rsl::math::float4x4 proj = rsl::math::perspective(rsl::math::deg2rad(45.0f),
+		                                                  static_cast<float>(screenSize.x) / static_cast<float>(screenSize.y),
+		                                                  0.1f, 100.0f);
+		SDL_PushGPUVertexUniformData(commandBuffer, 2, &proj, sizeof(proj));
 
 		SDL_DrawGPUIndexedPrimitives(renderPass, 6, 1, 0, 0, 0);
 

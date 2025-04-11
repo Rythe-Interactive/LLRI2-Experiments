@@ -1,6 +1,14 @@
 cbuffer UniformBlock : register(b0, space1)
 {
-	float4x4 MatrixTransform : packoffset(c0);
+	column_major float4x4 model : packoffset(c0);
+}
+cbuffer UniformBlock : register(b1, space1)
+{
+	column_major float4x4 view : packoffset(c0);
+}
+cbuffer UniformBlock : register(b2, space1)
+{
+	column_major float4x4 projection : packoffset(c0);
 };
 
 struct Input
@@ -19,6 +27,6 @@ Output main(Input input)
 {
 	Output output;
 	output.TexCoord = input.TexCoord;
-	output.Position = mul(MatrixTransform, input.Position);
+	output.Position = mul(projection, mul(view, mul(model, input.Position)));
 	return output;
 }
