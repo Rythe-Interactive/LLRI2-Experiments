@@ -271,10 +271,12 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	// Copy the vertex data into the transfer buffer
 	constexpr float radius = 0.5f;
 	//positions, texture coords, colours from LearnOpenGL
+	//@formatter:off
 	transferData[0] = MyVertex{{ radius,  radius, 0.0f}, {1.0f, 1.0f},}; // top right
 	transferData[1] = MyVertex{{ radius, -radius, 0.0f}, {1.0f, 0.0f},}; // bottom right
 	transferData[2] = MyVertex{{-radius, -radius, 0.0f}, {0.0f, 0.0f},}; // bottom left
 	transferData[3] = MyVertex{{-radius,  radius, 0.0f}, {0.0f, 1.0f},}; // top left
+	//@formatter:on
 
 	// Copy the index data into the transfer buffer
 	Uint16* indexData = reinterpret_cast<Uint16*>(&transferData[4]);
