@@ -19,6 +19,9 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 # Link to the SDL3 library.
 target_link_libraries(${PROJECT_NAME} PRIVATE SDL3::SDL3)
 
+# Link to the RSL library.
+target_link_libraries(${PROJECT_NAME} PRIVATE RSL)
+
 # Copy assets to the build output directory after building.
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E copy_directory ${PROJECT_SOURCE_DIR}/assets $<TARGET_FILE_DIR:${PROJECT_NAME}>/assets
