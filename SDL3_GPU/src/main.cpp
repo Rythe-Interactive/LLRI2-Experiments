@@ -1,13 +1,15 @@
+// SDL3
 #define SDL_MAIN_USE_CALLBACKS
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
-#include <string>
-
-// Rythe Math
+// RSL Math
 #define RSL_DEFAULT_ALIGNED_MATH false
 #include <vector/vector.hpp>
 #include <matrix/matrix.hpp>
+
+// C++
+#include <string>
 
 #ifdef NDEBUG
 constexpr bool debug_mode = false;

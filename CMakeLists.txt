@@ -10,6 +10,9 @@ add_subdirectory(vendored/SDL EXCLUDE_FROM_ALL)
 set(RSL_DIR vendored/Rythe-Standard-Library)
 include_directories(${RSL_DIR}/src/rsl/impl/math)
 
+## tinyobjloader
+add_subdirectory(vendored/tinyobjloader EXCLUDE_FROM_ALL)
+
 
 # Projects
 add_subdirectory(SDL3_GPU)
