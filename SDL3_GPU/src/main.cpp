@@ -428,16 +428,18 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 		SDL_PushGPUVertexUniformData(commandBuffer, 0, &model, sizeof(model));
 
 		// > View Matrix
-		rsl::math::float4x4 view = rsl::math::float4x4(1.0f);
-		view = translate(view, rsl::math::float3(0.0f, 0.0f, 3.0f));
+		rsl::math::float3 cameraPos = rsl::math::float3(0.0f, 0.0f, -3.0f);
+		rsl::math::float3 cameraTarget = rsl::math::float3(0.0f, 0.0f, 0.0f);
+		rsl::math::float3 up = rsl::math::float3(0.0f, 1.0f, 0.0f);
+		rsl::math::float4x4 view = look_at(cameraPos, cameraTarget, up);
 		SDL_PushGPUVertexUniformData(commandBuffer, 1, &view, sizeof(view));
 
 		// > Projection Matrix
 		rsl::math::int2 screenSize;
 		SDL_GetWindowSize(myAppState->window, &screenSize.x, &screenSize.y);
-		rsl::math::float4x4 proj = rsl::math::perspective(rsl::math::deg2rad(45.0f),
-		                                                  static_cast<float>(screenSize.x) / static_cast<float>(screenSize.y),
-		                                                  0.1f, 100.0f);
+		rsl::math::float4x4 proj = perspective(rsl::math::deg2rad(45.0f),
+		                                       static_cast<float>(screenSize.x) / static_cast<float>(screenSize.y),
+		                                       0.1f, 100.0f);
 		SDL_PushGPUVertexUniformData(commandBuffer, 2, &proj, sizeof(proj));
 
 		SDL_DrawGPUIndexedPrimitives(renderPass, 6, 1, 0, 0, 0);
