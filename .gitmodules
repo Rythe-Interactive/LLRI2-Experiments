@@ -4,3 +4,6 @@
 [submodule "vendored/Rythe-Standard-Library"]
 	path = vendored/Rythe-Standard-Library
 	url = https://github.com/Rythe-Interactive/Rythe-Standard-Library.git
+[submodule "vendored/assimp"]
+	path = vendored/assimp
+	url = https://github.com/assimp/assimp.git

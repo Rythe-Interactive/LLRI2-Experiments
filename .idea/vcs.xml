@@ -3,6 +3,8 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/vendored/Rythe-Standard-Library" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/vendored/Rythe-Standard-Library/third_party/spdlog" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/vendored/SDL" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/vendored/assimp" vcs="Git" />
   </component>
 </project>

@@ -8,6 +8,11 @@
 #include <vector/vector.hpp>
 #include <matrix/matrix.hpp>
 
+// Assimp
+#include <assimp/Importer.hpp>      // C++ importer interface
+#include <assimp/scene.h>           // Output data structure
+#include <assimp/postprocess.h>     // Post-processing flags
+
 // C++
 #include <filesystem>
 #include <string>
@@ -23,6 +28,45 @@ struct MyVertex {
 	rsl::math::float2 tex;
 };
 
+struct MyMesh {
+	std::vector<MyVertex> vertices;
+	std::vector<Uint16> indices;
+	std::filesystem::path texture;
+
+	[[nodiscard]] size_t vertices_size() const {
+		return sizeof(MyVertex) * vertices.size();
+	}
+
+	[[nodiscard]] size_t indices_size() const {
+		return sizeof(Uint16) * indices.size();
+	}
+
+	[[nodiscard]] size_t total_size() const {
+		return vertices_size() + indices_size();
+	}
+
+	[[nodiscard]] SDL_GPUBufferCreateInfo vertex_buffer_create_info() const {
+		return SDL_GPUBufferCreateInfo{
+			.usage = SDL_GPU_BUFFERUSAGE_VERTEX,
+			.size = static_cast<Uint32>(vertices_size()),
+		};
+	}
+
+	[[nodiscard]] SDL_GPUBufferCreateInfo index_buffer_create_info() const {
+		return SDL_GPUBufferCreateInfo{
+			.usage = SDL_GPU_BUFFERUSAGE_INDEX,
+			.size = static_cast<Uint32>(indices_size()),
+		};
+	}
+
+	[[nodiscard]] SDL_GPUTransferBufferCreateInfo transfer_buffer_create_info() const {
+		return SDL_GPUTransferBufferCreateInfo{
+			.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+			.size = static_cast<Uint32>(total_size()),
+		};
+	}
+};
+
 struct MyAppState {
 	std::string name = "Hello, SDL3's GPU API!";
 	SDL_Window* window = nullptr;
@@ -32,6 +76,7 @@ struct MyAppState {
 	SDL_GPUBuffer* indexBuffer = nullptr;
 	SDL_GPUTexture* texture = nullptr;
 	SDL_GPUSampler* sampler = nullptr;
+	MyMesh* mesh = nullptr;
 };
 
 SDL_GPUShader* LoadShader(
@@ -119,6 +164,71 @@ SDL_Surface* LoadImage(const std::filesystem::path& imagePath, const int desired
 	return result;
 }
 
+std::optional<MyMesh> ImportMesh(const std::filesystem::path& meshPath) {
+	const std::filesystem::path fullPath = std::filesystem::path(SDL_GetBasePath()) / meshPath;
+	SDL_assert(is_regular_file(fullPath));
+	Assimp::Importer importer;
+
+	constexpr int flags = aiProcess_CalcTangentSpace | aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType | aiProcess_ValidateDataStructure | aiProcess_FindInvalidData;
+
+	const aiScene* scene = importer.ReadFile(fullPath.c_str(), flags);
+
+	if (nullptr == scene) {
+		SDL_Log("[ERROR] Assimp: %s", importer.GetErrorString());
+		return std::nullopt;
+	}
+
+	// Mesh
+	SDL_assert(scene->HasMeshes());
+	SDL_assert(scene->mNumMeshes == 1);
+	const aiMesh* mesh = scene->mMeshes[0];
+	SDL_assert(mesh->HasPositions() && mesh->HasFaces());
+
+	// > Vertices
+	SDL_Log("Assimp: Mesh %s has %d vertices", fullPath.c_str(), mesh->mNumVertices);
+	std::vector<MyVertex> vertices(mesh->mNumVertices);
+	for (int i = 0; i < mesh->mNumVertices; i++) {
+		const aiVector3D& pos = mesh->mVertices[i];
+		const aiVector3D tex = mesh->mTextureCoords[0][i];
+		SDL_Log("Assimp: Vertex %d: pos{x: %f, y: %f, z: %f} tex{x: %f, y: %f, z: %f}", i, pos.x, pos.y, pos.z, tex.x, tex.y, tex.z);
+		vertices[i] = MyVertex{
+			.pos = rsl::math::float3(pos.x, pos.y, pos.z),
+			.tex = rsl::math::float2(tex.x, tex.y),
+		};
+	}
+	// > Indices
+	std::vector<Uint16> indices(mesh->mNumFaces * 3);
+	SDL_Log("Assimp: Mesh %s has %d faces", fullPath.c_str(), mesh->mNumFaces);
+	for (int i = 0; i < mesh->mNumFaces; i++) {
+		const aiFace& face = mesh->mFaces[i];
+		SDL_Log("Assimp: Face %d: ", i);
+		for (int j = 0; j < face.mNumIndices; j++) {
+			SDL_Log("%d ", face.mIndices[j]);
+			indices[i * 3 + j] = face.mIndices[j];
+		}
+		SDL_Log("\n");
+	}
+
+	// Material texture path
+	SDL_assert(scene->HasMaterials());
+	SDL_assert(scene->mNumMaterials == 2); //default and my own
+	const aiMaterial* material = scene->mMaterials[1]; // 1 is my material
+	SDL_Log("Material %d: %s", 1, material->GetName().C_Str());
+	SDL_assert(material->GetTextureCount(aiTextureType_DIFFUSE) == 1);
+
+	aiString* assimpPath = new aiString();
+	material->GetTexture(aiTextureType_DIFFUSE, 0, assimpPath);
+	SDL_Log("Assimp path: %s", assimpPath->C_Str());
+	std::filesystem::path texturePath = fullPath.parent_path() / assimpPath->C_Str();
+	delete assimpPath;
+
+	return MyMesh{
+		.vertices = std::move(vertices),
+		.indices = std::move(indices),
+		.texture = std::move(texturePath),
+	};
+}
+
 // ReSharper disable twice CppParameterNeverUsed
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	MyAppState* myAppState = new MyAppState();
@@ -145,6 +255,14 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 		return SDL_APP_FAILURE;
 	}
 
+	// Load mesh
+	std::optional<MyMesh> oMesh = ImportMesh("assets/models/suzanne/suzanne.obj");
+	if (!oMesh.has_value()) {
+		SDL_Log("Couldn't import mesh!");
+		return SDL_APP_FAILURE;
+	}
+	myAppState->mesh = new MyMesh(std::move(oMesh.value()));
+
 	// Shaders
 	// > Vertex Shader
 	SDL_GPUShader* vertexShader = LoadShader(myAppState->device, "triangle.vert", 0, 3, 0, 0);
@@ -161,7 +279,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	}
 
 	// Texture Image
-	SDL_Surface* imageData = LoadImage("container.bmp", 4);
+	SDL_Surface* imageData = LoadImage(myAppState->mesh->texture, 4);
 	if (imageData == nullptr) {
 		SDL_Log("Couldn't load image data!");
 		return SDL_APP_FAILURE;
@@ -238,17 +356,11 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 
 	// GPU Resources
 	// > Vertex Buffer
-	constexpr SDL_GPUBufferCreateInfo vertexBufferCreateInfo = SDL_GPUBufferCreateInfo{
-		.usage = SDL_GPU_BUFFERUSAGE_VERTEX,
-		.size = sizeof(MyVertex) * 4,
-	};
+	SDL_GPUBufferCreateInfo vertexBufferCreateInfo = myAppState->mesh->vertex_buffer_create_info();
 	myAppState->vertexBuffer = SDL_CreateGPUBuffer(myAppState->device, &vertexBufferCreateInfo);
 
 	// > Index Buffer
-	constexpr SDL_GPUBufferCreateInfo indexBufferCreateInfo = SDL_GPUBufferCreateInfo{
-		.usage = SDL_GPU_BUFFERUSAGE_INDEX,
-		.size = sizeof(Uint16) * 6,
-	};
+	SDL_GPUBufferCreateInfo indexBufferCreateInfo = myAppState->mesh->index_buffer_create_info();
 	myAppState->indexBuffer = SDL_CreateGPUBuffer(myAppState->device, &indexBufferCreateInfo);
 
 	// > Texture
@@ -266,33 +378,16 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	myAppState->texture = SDL_CreateGPUTexture(myAppState->device, &textureCreateInfo);
 
 	// Transfer Buffer for the vertex and index buffers
-	constexpr SDL_GPUTransferBufferCreateInfo bufferTransferBufferCreateInfo = SDL_GPUTransferBufferCreateInfo{
-		.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-		.size = sizeof(MyVertex) * 4 + sizeof(Uint16) * 6,
-	};
+	SDL_GPUTransferBufferCreateInfo bufferTransferBufferCreateInfo = myAppState->mesh->transfer_buffer_create_info();
 	SDL_GPUTransferBuffer* bufferTransferBuffer = SDL_CreateGPUTransferBuffer(myAppState->device, &bufferTransferBufferCreateInfo); //(transfer buffer for the _buffers_ as opposed to the _texture_)
 
 	// Request space from the GPU Driver to put our buffers data into
-	MyVertex* transferData = static_cast<MyVertex*>(SDL_MapGPUTransferBuffer(myAppState->device, bufferTransferBuffer, false));
+	void* transferData = SDL_MapGPUTransferBuffer(myAppState->device, bufferTransferBuffer, false);
 
 	// Copy the vertex data into the transfer buffer
-	constexpr float radius = 0.5f;
-	//positions, texture coords, colours from LearnOpenGL
-	//@formatter:off
-	transferData[0] = MyVertex{{ radius,  radius, 0.0f}, {1.0f, 1.0f},}; // top right
-	transferData[1] = MyVertex{{ radius, -radius, 0.0f}, {1.0f, 0.0f},}; // bottom right
-	transferData[2] = MyVertex{{-radius, -radius, 0.0f}, {0.0f, 0.0f},}; // bottom left
-	transferData[3] = MyVertex{{-radius,  radius, 0.0f}, {0.0f, 1.0f},}; // top left
-	//@formatter:on
-
+	SDL_memcpy(transferData, myAppState->mesh->vertices.data(), myAppState->mesh->vertices_size());
 	// Copy the index data into the transfer buffer
-	Uint16* indexData = reinterpret_cast<Uint16*>(&transferData[4]);
-	indexData[0] = 0;
-	indexData[1] = 1;
-	indexData[2] = 3;
-	indexData[3] = 1;
-	indexData[4] = 2;
-	indexData[5] = 3;
+	SDL_memcpy(transferData + myAppState->mesh->vertices_size(), myAppState->mesh->indices.data(), myAppState->mesh->indices_size());
 
 	// Release the space we requested from the GPU Driver again
 	SDL_UnmapGPUTransferBuffer(myAppState->device, bufferTransferBuffer);
@@ -323,19 +418,19 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	const SDL_GPUBufferRegion vertexBufferRegion = SDL_GPUBufferRegion{
 		.buffer = myAppState->vertexBuffer,
 		.offset = 0,
-		.size = sizeof(MyVertex) * 4,
+		.size = static_cast<Uint32>(myAppState->mesh->vertices_size())
 	};
 	SDL_UploadToGPUBuffer(copyPass, &vertexBufferLocation, &vertexBufferRegion, false);
 
 	// > Upload the index buffer
 	const SDL_GPUTransferBufferLocation indexBufferLocation = SDL_GPUTransferBufferLocation{
 		.transfer_buffer = bufferTransferBuffer,
-		.offset = sizeof(MyVertex) * 4,
+		.offset = static_cast<Uint32>(myAppState->mesh->vertices_size()),
 	};
 	const SDL_GPUBufferRegion indexBufferRegion = SDL_GPUBufferRegion{
 		.buffer = myAppState->indexBuffer,
 		.offset = 0,
-		.size = sizeof(Uint16) * 6,
+		.size = static_cast<Uint32>(myAppState->mesh->indices_size())
 	};
 	SDL_UploadToGPUBuffer(copyPass, &indexBufferLocation, &indexBufferRegion, false);
 
@@ -427,11 +522,10 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 		//Uniforms
 		// > Model Matrix
 		rsl::math::float4x4 model = rsl::math::float4x4(1.0f);
-		model = rotate(model, rsl::math::deg2rad(-55.0f), rsl::math::float3(-1.0f, 0.0f, 0.0f));
 		SDL_PushGPUVertexUniformData(commandBuffer, 0, &model, sizeof(model));
 
 		// > View Matrix
-		rsl::math::float3 cameraPos = rsl::math::float3(0.0f, 0.0f, -3.0f);
+		rsl::math::float3 cameraPos = rsl::math::float3(0.0f, 3.0f, 5.0f);
 		rsl::math::float3 cameraTarget = rsl::math::float3(0.0f, 0.0f, 0.0f);
 		rsl::math::float3 up = rsl::math::float3(0.0f, 1.0f, 0.0f);
 		rsl::math::float4x4 view = look_at(cameraPos, cameraTarget, up);
@@ -445,7 +539,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 		                                       0.1f, 100.0f);
 		SDL_PushGPUVertexUniformData(commandBuffer, 2, &proj, sizeof(proj));
 
-		SDL_DrawGPUIndexedPrimitives(renderPass, 6, 1, 0, 0, 0);
+		SDL_DrawGPUIndexedPrimitives(renderPass, myAppState->mesh->indices.size(), 1, 0, 0, 0);
 
 		SDL_EndGPURenderPass(renderPass);
 	}

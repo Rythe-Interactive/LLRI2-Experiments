@@ -37,6 +37,9 @@ target_sources(RSL PUBLIC
 # Precompiled headers are used to speed up compilation.
 #target_precompile_headers(RSL INTERFACE ${RSL_DIR}/src/rsl/math) #TODO: Does not work...
 
+## Assimp
+add_subdirectory(vendored/assimp EXCLUDE_FROM_ALL)
+
 # Projects
 add_subdirectory(SDL3_GPU)
 add_subdirectory(Vulkan_Raw)
