@@ -9,6 +9,7 @@
 #include <matrix/matrix.hpp>
 
 // C++
+#include <filesystem>
 #include <string>
 
 #ifdef NDEBUG
@@ -58,7 +59,7 @@ SDL_GPUShader* LoadShader(
 		SDL_Log("Device does not support SPIR-V shaders!");
 		return nullptr;
 	}
-	const std::string fullPath = std::string(SDL_GetBasePath()) + "assets/shaders/compiled/" + shaderFilename + ".spv";
+	const std::filesystem::path fullPath = std::filesystem::path(SDL_GetBasePath()) / "assets/shaders/compiled/" / (shaderFilename + ".spv");
 
 	size_t codeSize;
 	void* code = SDL_LoadFile(fullPath.c_str(), &codeSize);
@@ -90,8 +91,10 @@ SDL_GPUShader* LoadShader(
 	return shader;
 }
 
-SDL_Surface* LoadImage(const std::string& imageFilename, const int desiredChannels) {
-	const std::string fullPath = std::string(SDL_GetBasePath()) + "assets/images/" + imageFilename;
+/// @param imagePath Path to image file, relative from the directory where the application was run from.
+/// @param desiredChannels Colour channels of the image to load.
+SDL_Surface* LoadImage(const std::filesystem::path& imagePath, const int desiredChannels) {
+	const std::filesystem::path fullPath = std::filesystem::path(SDL_GetBasePath()) / imagePath;
 
 	SDL_Surface* result = SDL_LoadBMP(fullPath.c_str());
 	if (result == nullptr) {
