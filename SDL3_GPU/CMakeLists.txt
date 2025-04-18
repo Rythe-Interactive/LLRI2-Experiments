@@ -20,7 +20,7 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 target_link_libraries(${PROJECT_NAME} PRIVATE SDL3::SDL3)
 
 # Link to the RSL library.
-target_link_libraries(${PROJECT_NAME} PRIVATE RSL)
+target_link_libraries(${PROJECT_NAME} PRIVATE rsl)
 
 # Link to the Assimp library.
 target_link_libraries(${PROJECT_NAME} PRIVATE assimp)

@@ -1,41 +1,42 @@
 cmake_minimum_required(VERSION 3.30)
 project(LLRI2_Experiments)
 
+set (CMAKE_CXX_STANDARD 20)
+
 # Libraries
 
 ## SDL3
 add_subdirectory(vendored/SDL EXCLUDE_FROM_ALL)
 
-## RSL Math
-set(RSL_DIR ${CMAKE_SOURCE_DIR}/vendored/Rythe-Standard-Library/)
+## RSL
+set(RSL_DIR ${CMAKE_SOURCE_DIR}/vendored/Rythe-Standard-Library)
+file(GLOB_RECURSE RSL_SOURCES "${RSL_DIR}/src/*")
+add_library(rsl STATIC ${RSL_SOURCES})
 
-#file(GLOB RSL_HEADERS LIST_DIRECTORIES false ${RSL_DIR}/src/rsl/*)
-#add_library(RSL ${RSL_HEADERS})
-
-add_library(RSL INTERFACE)
+target_sources(rsl PUBLIC ${RSL_SOURCES})
 
 ### Due to the lack of file extensions, we need to tell CMake manually what to compile it as.
-set_target_properties(RSL PROPERTIES LINKER_LANGUAGE CXX)
+set_target_properties(rsl PROPERTIES LINKER_LANGUAGE CXX)
 
 ### Set C++ version
-target_compile_features(RSL INTERFACE cxx_std_23)
+target_compile_features(rsl PUBLIC cxx_std_20)
+set_target_properties(rsl PROPERTIES CXX_STANDARD_REQUIRED ON)
 
-#target_include_directories(RSL
-#	INTERFACE
-#	${RSL_DIR}/src/rsl/impl/math
-#)
+target_include_directories(rsl SYSTEM PUBLIC ${RSL_DIR}/src)
+target_include_directories(rsl SYSTEM PUBLIC ${RSL_DIR}/third_party/spdlog/include)
 
-target_sources(RSL PUBLIC
-	FILE_SET HEADERS
-		BASE_DIRS ${RSL_DIR}/src/rsl/impl/math/
-		FILES
-			${RSL_DIR}/src/rsl/impl/math/color.hpp
-			${RSL_DIR}/src/rsl/impl/math/constants.hpp
-			${RSL_DIR}/src/rsl/impl/math/geometry.hpp
-)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+	target_compile_options(rsl PUBLIC -msse -mfma)
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+	target_compile_options(rsl PUBLIC -msse -mfma)
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+	target_compile_options(rsl PUBLIC /Oi)
+endif()
+
+
 
 # Precompiled headers are used to speed up compilation.
-#target_precompile_headers(RSL INTERFACE ${RSL_DIR}/src/rsl/math) #TODO: Does not work...
+# target_precompile_headers(rsl INTERFACE ${RSL_DIR}/src/rsl/math) #TODO: Does not work...
 
 ## Assimp
 add_subdirectory(vendored/assimp EXCLUDE_FROM_ALL)

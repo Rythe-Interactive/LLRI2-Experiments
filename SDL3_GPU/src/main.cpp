@@ -5,8 +5,7 @@
 
 // RSL Math
 #define RSL_DEFAULT_ALIGNED_MATH false
-#include <vector/vector.hpp>
-#include <matrix/matrix.hpp>
+#include <rsl/math>
 
 // Assimp
 #include <assimp/Importer.hpp>      // C++ importer interface
@@ -107,7 +106,7 @@ SDL_GPUShader* LoadShader(
 	const std::filesystem::path fullPath = std::filesystem::path(SDL_GetBasePath()) / "assets/shaders/compiled/" / (shaderFilename + ".spv");
 
 	size_t codeSize;
-	void* code = SDL_LoadFile(fullPath.c_str(), &codeSize);
+	void* code = SDL_LoadFile(fullPath.string().c_str(), &codeSize);
 	if (code == nullptr) {
 		SDL_Log("Couldn't load shader from disk! %s", fullPath.c_str());
 		return nullptr;
@@ -141,7 +140,7 @@ SDL_GPUShader* LoadShader(
 SDL_Surface* LoadImage(const std::filesystem::path& imagePath, const int desiredChannels) {
 	const std::filesystem::path fullPath = std::filesystem::path(SDL_GetBasePath()) / imagePath;
 
-	SDL_Surface* result = SDL_LoadBMP(fullPath.c_str());
+	SDL_Surface* result = SDL_LoadBMP(fullPath.string().c_str());
 	if (result == nullptr) {
 		SDL_Log("Couldn't load BMP: %s", SDL_GetError());
 		return nullptr;
@@ -171,7 +170,7 @@ std::optional<MyMesh> ImportMesh(const std::filesystem::path& meshPath) {
 
 	constexpr int flags = aiProcess_CalcTangentSpace | aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType | aiProcess_ValidateDataStructure | aiProcess_FindInvalidData;
 
-	const aiScene* scene = importer.ReadFile(fullPath.c_str(), flags);
+	const aiScene* scene = importer.ReadFile(fullPath.string().c_str(), flags);
 
 	if (nullptr == scene) {
 		SDL_Log("[ERROR] Assimp: %s", importer.GetErrorString());
@@ -382,7 +381,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	SDL_GPUTransferBuffer* bufferTransferBuffer = SDL_CreateGPUTransferBuffer(myAppState->device, &bufferTransferBufferCreateInfo); //(transfer buffer for the _buffers_ as opposed to the _texture_)
 
 	// Request space from the GPU Driver to put our buffers data into
-	void* transferData = SDL_MapGPUTransferBuffer(myAppState->device, bufferTransferBuffer, false);
+	rsl::byte* transferData = static_cast<rsl::byte*>(SDL_MapGPUTransferBuffer(myAppState->device, bufferTransferBuffer, false));
 
 	// Copy the vertex data into the transfer buffer
 	SDL_memcpy(transferData, myAppState->mesh->vertices.data(), myAppState->mesh->vertices_size());
