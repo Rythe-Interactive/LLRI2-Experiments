@@ -256,7 +256,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	}
 
 	// Load mesh
-	std::optional<MyMesh> oMesh = ImportMesh("assets/models/suzanne/suzanne.obj");
+	std::optional<MyMesh> oMesh = ImportMesh("assets/models/container/blender_quad.obj");
 	if (!oMesh.has_value()) {
 		SDL_Log("Couldn't import mesh!");
 		return SDL_APP_FAILURE;
@@ -525,7 +525,10 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 		SDL_PushGPUVertexUniformData(commandBuffer, 0, &model, sizeof(model));
 
 		// > View Matrix
-		rsl::math::float3 cameraPos = rsl::math::float3(0.0f, 3.0f, 5.0f);
+		constexpr float radius = 10.0f;
+		float camX = sinf(static_cast<float>(SDL_GetTicks()) / 1000.0f) * radius;
+		float camZ = cosf(static_cast<float>(SDL_GetTicks()) / 1000.0f) * radius;
+		rsl::math::float3 cameraPos = rsl::math::float3(camX, 3.0f, camZ); //BUG: Something is still wonky, here...
 		rsl::math::float3 cameraTarget = rsl::math::float3(0.0f, 0.0f, 0.0f);
 		rsl::math::float3 up = rsl::math::float3(0.0f, 1.0f, 0.0f);
 		rsl::math::float4x4 view = look_at(cameraPos, cameraTarget, up);
