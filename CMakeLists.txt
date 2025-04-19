@@ -11,6 +11,10 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIGURATION>")
 ## SDL3
 add_subdirectory(vendored/SDL EXCLUDE_FROM_ALL)
 
+## Assimp
+set(BUILD_SHARED_LIBS OFF)
+add_subdirectory(vendored/assimp EXCLUDE_FROM_ALL)
+
 ## RSL
 set(RSL_DIR ${CMAKE_SOURCE_DIR}/vendored/Rythe-Standard-Library)
 file(GLOB_RECURSE RSL_SOURCES "${RSL_DIR}/src/*")
@@ -31,18 +35,15 @@ target_include_directories(rsl SYSTEM PUBLIC ${RSL_DIR}/third_party/spdlog/inclu
 
 ### Enable CPU features
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-	target_compile_options(rsl PUBLIC -msse -mfma)
+	target_compile_options(rsl PUBLIC -msse -mfma -fpartial-inlining)
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-	target_compile_options(rsl PUBLIC -msse -mfma)
+	target_compile_options(rsl PUBLIC -msse -mfma -fpartial-inlining)
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-	target_compile_options(rsl PUBLIC /Oi)
+	target_compile_options(rsl PUBLIC /Oi /Ob1)
 endif()
 
 # Precompiled headers are used to speed up compilation.
 # target_precompile_headers(rsl INTERFACE ${RSL_DIR}/src/rsl/math) #TODO: Does not work...
-
-## Assimp
-add_subdirectory(vendored/assimp EXCLUDE_FROM_ALL)
 
 # Projects
 add_subdirectory(SDL3_GPU)
