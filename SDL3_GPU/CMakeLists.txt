@@ -1,11 +1,6 @@
 cmake_minimum_required(VERSION 3.30)
 project(LLRI2_Experiments_SDL3_GPU)
 
-# Set the output directory for built objects.
-# This makes sure that the dynamic library goes into the build directory automatically.
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIGURATION>")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIGURATION>")
-
 # Creates the TARGET for this project, which is the executable.
 # The commands after that require the TARGET to be created first.
 
