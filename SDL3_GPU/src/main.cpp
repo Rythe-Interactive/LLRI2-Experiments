@@ -536,7 +536,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 		// > Projection Matrix
 		rsl::math::int2 screenSize;
 		SDL_GetWindowSize(myAppState->window, &screenSize.x, &screenSize.y);
-		rsl::math::float4x4 proj = perspective(rsl::math::deg2rad(45.0f),
+		rsl::math::float4x4 proj = perspective(rsl::math::degrees(45.0f).radians(),
 		                                       static_cast<float>(screenSize.x) / static_cast<float>(screenSize.y),
 		                                       0.1f, 100.0f);
 		SDL_PushGPUVertexUniformData(commandBuffer, 2, &proj, sizeof(proj));
