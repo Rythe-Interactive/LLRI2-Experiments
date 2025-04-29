@@ -34,11 +34,9 @@ target_include_directories(rsl SYSTEM PUBLIC ${RSL_DIR}/src)
 target_include_directories(rsl SYSTEM PUBLIC ${RSL_DIR}/third_party/spdlog/include)
 
 ### Enable CPU features
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
 	target_compile_options(rsl PUBLIC -msse -mfma -fpartial-inlining)
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-	target_compile_options(rsl PUBLIC -msse -mfma -fpartial-inlining)
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+elseif(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
 	target_compile_options(rsl PUBLIC /Oi /Ob1)
 endif()
 
