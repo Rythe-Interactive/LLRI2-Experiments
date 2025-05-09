@@ -4,6 +4,10 @@
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL_vulkan.h>
 
+// RSL Math
+#define RSL_DEFAULT_ALIGNED_MATH false
+#include <rsl/math>
+
 // Vulkan
 #include <volk.h>
 #include <VkBootstrap.h>
@@ -14,6 +18,10 @@
 struct FrameData {
 	VkCommandPool commandPool = nullptr;
 	VkCommandBuffer mainCommandBuffer = nullptr;
+
+	VkSemaphore swapchainSemaphore = nullptr;
+	VkSemaphore renderSemaphore = nullptr;
+	VkFence renderFence = nullptr;
 };
 
 constexpr unsigned int FRAME_OVERLAP = 2;
@@ -86,7 +94,6 @@ void DestroySwapchain(const MyAppState* myAppState) {
 VkCommandPoolCreateInfo CommandPoolCreateInfo(const uint32_t queueFamilyIndex, const VkCommandPoolCreateFlags flags = 0) {
 	return VkCommandPoolCreateInfo{
 		.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-		.pNext = nullptr,
 		.flags = flags,
 		.queueFamilyIndex = queueFamilyIndex,
 	};
@@ -95,26 +102,62 @@ VkCommandPoolCreateInfo CommandPoolCreateInfo(const uint32_t queueFamilyIndex, c
 VkCommandBufferAllocateInfo CommandBufferAllocateInfo(const VkCommandPool& commandPool, const uint32_t count = 1) {
 	return VkCommandBufferAllocateInfo{
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-		.pNext = nullptr,
 		.commandPool = commandPool,
 		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
 		.commandBufferCount = count,
 	};
 }
 
+VkFenceCreateInfo FenceCreateInfo(const VkFenceCreateFlags flags = 0) {
+	return VkFenceCreateInfo{
+		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+		.flags = flags,
+	};
+}
+
+VkSemaphoreCreateInfo SemaphoreCreateInfo(const VkSemaphoreCreateFlags flags = 0) {
+	return VkSemaphoreCreateInfo{
+		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+		.flags = flags,
+	};
+}
+
+bool InitSyncStructures(MyAppState* myAppState) {
+	const VkFenceCreateInfo fenceCreateInfo = FenceCreateInfo(VK_FENCE_CREATE_SIGNALED_BIT);
+	const VkSemaphoreCreateInfo semaphoreCreateInfo = SemaphoreCreateInfo();
+
+	for (auto& frame : myAppState->frames) {
+		if (vkCreateFence(myAppState->device, &fenceCreateInfo, nullptr, &frame.renderFence) != VK_SUCCESS) {
+			SDL_Log("Couldn't create fence: %s", SDL_GetError());
+			return false;
+		}
+
+		if (vkCreateSemaphore(myAppState->device, &semaphoreCreateInfo, nullptr, &frame.swapchainSemaphore) != VK_SUCCESS) {
+			SDL_Log("Couldn't create swapchain semaphore: %s", SDL_GetError());
+			return false;
+		}
+		if (vkCreateSemaphore(myAppState->device, &semaphoreCreateInfo, nullptr, &frame.renderSemaphore) != VK_SUCCESS) {
+			SDL_Log("Couldn't create render semaphore: %s", SDL_GetError());
+			return false;
+		}
+	}
+
+	return true;
+}
 
 /// Returns true on success, false on failure
 bool InitCommands(MyAppState* myAppState) {
 	const VkCommandPoolCreateInfo commandPoolCreateInfo = CommandPoolCreateInfo(myAppState->graphicsQueueFamilyIndex, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
-	for (auto& [commandPool, mainCommandBuffer] : myAppState->frames) {
-		if (vkCreateCommandPool(myAppState->device, &commandPoolCreateInfo, nullptr, &commandPool) != VK_SUCCESS) {
+	for (auto& frame : myAppState->frames) {
+		if (vkCreateCommandPool(myAppState->device, &commandPoolCreateInfo, nullptr, &frame.commandPool) != VK_SUCCESS) {
 			SDL_Log("Couldn't create command pool: %s", SDL_GetError());
 			return false;
 		}
 
-		VkCommandBufferAllocateInfo commandBufferAllocateInfo = CommandBufferAllocateInfo(commandPool, 1);
-		if (vkAllocateCommandBuffers(myAppState->device, &commandBufferAllocateInfo, &mainCommandBuffer) != VK_SUCCESS) {
+		VkCommandBufferAllocateInfo commandBufferAllocateInfo = CommandBufferAllocateInfo(frame.commandPool, 1);
+
+		if (vkAllocateCommandBuffers(myAppState->device, &commandBufferAllocateInfo, &frame.mainCommandBuffer) != VK_SUCCESS) {
 			SDL_Log("Couldn't allocate command buffer: %s", SDL_GetError());
 			return false;
 		}
@@ -242,6 +285,16 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 		return SDL_APP_FAILURE;
 	}
 
+	if (!InitCommands(myAppState)) {
+		//SDL Log is handled in the function itself
+		return SDL_APP_FAILURE;
+	}
+
+	if (!InitSyncStructures(myAppState)) {
+		//SDL Log is handled in the function itself
+		return SDL_APP_FAILURE;
+	}
+
 	return SDL_APP_CONTINUE;
 }
 
@@ -254,9 +307,160 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 	return SDL_APP_CONTINUE;
 }
 
-SDL_AppResult SDL_AppIterate(void* appstate) {
-	const MyAppState* myAppState = static_cast<MyAppState*>(appstate);
+VkCommandBufferBeginInfo CommandBufferBeginInfo(const VkCommandBufferUsageFlags flags = 0) {
+	return VkCommandBufferBeginInfo{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+		.flags = flags,
+		.pInheritanceInfo = nullptr,
+	};
+}
 
+VkImageSubresourceRange ImageSubresourceRange(const VkImageAspectFlags aspectMask) {
+	return VkImageSubresourceRange{
+		.aspectMask = aspectMask,
+		.baseMipLevel = 0,
+		.levelCount = VK_REMAINING_MIP_LEVELS,
+		.baseArrayLayer = 0,
+		.layerCount = VK_REMAINING_ARRAY_LAYERS,
+	};
+}
+
+void TransitionImage(const VkCommandBuffer& commandBuffer, const VkImage& image, const VkImageLayout currentLayout, const VkImageLayout newLayout) {
+	const VkImageAspectFlags aspectMask = newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL
+		                                      ? VK_IMAGE_ASPECT_DEPTH_BIT
+		                                      : VK_IMAGE_ASPECT_COLOR_BIT;
+
+	VkImageMemoryBarrier2 imageBarrier{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+		.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+		.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+		.dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT,
+		.oldLayout = currentLayout,
+		.newLayout = newLayout,
+		.image = image,
+		.subresourceRange = ImageSubresourceRange(aspectMask),
+	};
+
+	const VkDependencyInfo depInfo{
+		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		.imageMemoryBarrierCount = 1,
+		.pImageMemoryBarriers = &imageBarrier,
+	};
+
+	vkCmdPipelineBarrier2(commandBuffer, &depInfo);
+}
+
+VkSemaphoreSubmitInfo SemaphoreSubmitInfo(const VkPipelineStageFlags2 stageMask, const VkSemaphore& semaphore) {
+	return VkSemaphoreSubmitInfo{
+		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+		.semaphore = semaphore,
+		.value = 1,
+		.stageMask = stageMask,
+		.deviceIndex = 0,
+	};
+}
+
+VkCommandBufferSubmitInfo CommandBufferSubmitInfo(const VkCommandBuffer& commandBuffer) {
+	return VkCommandBufferSubmitInfo{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+		.commandBuffer = commandBuffer,
+		.deviceMask = 0,
+	};
+}
+
+VkSubmitInfo2 SubmitInfo(const VkCommandBufferSubmitInfo* commandBuffer, const VkSemaphoreSubmitInfo* signalSemaphoreInfo, const VkSemaphoreSubmitInfo* waitSemaphoreInfo) {
+	return VkSubmitInfo2{
+		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+		.waitSemaphoreInfoCount = waitSemaphoreInfo == nullptr ? 0u : 1u,
+		.pWaitSemaphoreInfos = waitSemaphoreInfo,
+		.commandBufferInfoCount = 1,
+		.pCommandBufferInfos = commandBuffer,
+		.signalSemaphoreInfoCount = signalSemaphoreInfo == nullptr ? 0u : 1u,
+		.pSignalSemaphoreInfos = signalSemaphoreInfo
+	};
+}
+
+SDL_AppResult SDL_AppIterate(void* appstate) {
+	MyAppState* myAppState = static_cast<MyAppState*>(appstate);
+
+	constexpr uint64_t secondInNanoseconds = 1'000'000'000;
+
+	if (vkWaitForFences(myAppState->device, 1, &myAppState->GetCurrentFrame().renderFence, true, secondInNanoseconds) != VK_SUCCESS) {
+		SDL_Log("Couldn't wait for fence: %s", SDL_GetError());
+		return SDL_APP_FAILURE;
+	}
+	if (vkResetFences(myAppState->device, 1, &myAppState->GetCurrentFrame().renderFence) != VK_SUCCESS) {
+		SDL_Log("Couldn't reset fence: %s", SDL_GetError());
+		return SDL_APP_FAILURE;
+	}
+
+	uint32_t swapchainImageIndex;
+	if (vkAcquireNextImageKHR(myAppState->device, myAppState->swapchain, secondInNanoseconds, myAppState->GetCurrentFrame().swapchainSemaphore, nullptr, &swapchainImageIndex) != VK_SUCCESS) {
+		SDL_Log("Couldn't acquire next image: %s", SDL_GetError());
+		return SDL_APP_FAILURE;
+	}
+
+	const VkCommandBuffer& commandBuffer = myAppState->GetCurrentFrame().mainCommandBuffer;
+
+	if (vkResetCommandBuffer(commandBuffer, 0) != VK_SUCCESS) {
+		SDL_Log("Couldn't reset command buffer: %s", SDL_GetError());
+		return SDL_APP_FAILURE;
+	}
+
+	const VkCommandBufferBeginInfo commandBufferBeginInfo = CommandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+	if (vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo) != VK_SUCCESS) {
+		SDL_Log("Couldn't begin command buffer: %s", SDL_GetError());
+		return SDL_APP_FAILURE;
+	}
+
+	TransitionImage(commandBuffer, myAppState->swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
+	const float flash = std::abs(math::sin(static_cast<float>(myAppState->frameNumber) / 120.f));
+	const VkClearColorValue clearValue = {
+		.float32 = {0.0f, 0.0f, flash, 1.0f},
+	};
+
+	const VkImageSubresourceRange clearRange = ImageSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT);
+
+	vkCmdClearColorImage(commandBuffer, myAppState->swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
+
+	TransitionImage(commandBuffer, myAppState->swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
+	//finalise
+	if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
+		SDL_Log("Couldn't end command buffer: %s", SDL_GetError());
+		return SDL_APP_FAILURE;
+	}
+
+	const VkCommandBufferSubmitInfo commandBufferSubmitInfo = CommandBufferSubmitInfo(commandBuffer);
+
+	const VkSemaphoreSubmitInfo waitInfo = SemaphoreSubmitInfo(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR, myAppState->GetCurrentFrame().swapchainSemaphore);
+	const VkSemaphoreSubmitInfo signalInfo = SemaphoreSubmitInfo(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT, myAppState->GetCurrentFrame().renderSemaphore);
+
+	const VkSubmitInfo2 submit = SubmitInfo(&commandBufferSubmitInfo, &signalInfo, &waitInfo);
+
+	if (vkQueueSubmit2(myAppState->graphicsQueue, 1, &submit, myAppState->GetCurrentFrame().renderFence) != VK_SUCCESS) {
+		SDL_Log("Couldn't submit command buffer: %s", SDL_GetError());
+		return SDL_APP_FAILURE;
+	}
+
+	const VkPresentInfoKHR presentInfo = {
+		.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+		.waitSemaphoreCount = 1,
+		.pWaitSemaphores = &myAppState->GetCurrentFrame().renderSemaphore,
+		.swapchainCount = 1,
+		.pSwapchains = &myAppState->swapchain,
+		.pImageIndices = &swapchainImageIndex,
+	};
+
+	if (vkQueuePresentKHR(myAppState->graphicsQueue, &presentInfo) != VK_SUCCESS) {
+		SDL_Log("Couldn't present image: %s", SDL_GetError());
+		return SDL_APP_FAILURE;
+	}
+
+	myAppState->frameNumber++;
 
 	return SDL_APP_CONTINUE;
 }
@@ -269,8 +473,12 @@ void SDL_AppQuit(void* appstate, const SDL_AppResult result) {
 	if (result == SDL_APP_SUCCESS) {
 		vkDeviceWaitIdle(myAppState->device);
 
-		for (auto [commandPool, mainCommandBuffer] : myAppState->frames) {
-			vkDestroyCommandPool(myAppState->device, commandPool, nullptr);
+		for (auto& frame : myAppState->frames) {
+			vkDestroyCommandPool(myAppState->device, frame.commandPool, nullptr);
+
+			vkDestroyFence(myAppState->device, frame.renderFence, nullptr);
+			vkDestroySemaphore(myAppState->device, frame.swapchainSemaphore, nullptr);
+			vkDestroySemaphore(myAppState->device, frame.renderSemaphore, nullptr);
 		}
 
 		DestroySwapchain(myAppState);
