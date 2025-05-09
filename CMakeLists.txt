@@ -15,6 +15,15 @@ add_subdirectory(vendored/SDL EXCLUDE_FROM_ALL)
 set(BUILD_SHARED_LIBS OFF)
 add_subdirectory(vendored/assimp EXCLUDE_FROM_ALL)
 
+## Volk
+add_subdirectory(vendored/volk EXCLUDE_FROM_ALL)
+
+## VkBootstrap
+add_subdirectory(vendored/vk-bootstrap EXCLUDE_FROM_ALL)
+
+## Vulkan Memory Allocator (VMA)
+add_subdirectory(vendored/VulkanMemoryAllocator EXCLUDE_FROM_ALL)
+
 ## RSL
 set(RSL_DIR ${CMAKE_SOURCE_DIR}/vendored/Rythe-Standard-Library)
 file(GLOB_RECURSE RSL_SOURCES "${RSL_DIR}/src/*")

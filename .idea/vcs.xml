@@ -5,6 +5,9 @@
     <mapping directory="$PROJECT_DIR$/vendored/Rythe-Standard-Library" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/vendored/Rythe-Standard-Library/third_party/spdlog" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/vendored/SDL" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/vendored/VulkanMemoryAllocator" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/vendored/assimp" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/vendored/vk-bootstrap" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/vendored/volk" vcs="Git" />
   </component>
 </project>

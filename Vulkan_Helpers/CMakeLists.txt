@@ -13,3 +13,12 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 
 # Link to the SDL3 library.
 target_link_libraries(${PROJECT_NAME} PRIVATE SDL3::SDL3)
+
+# Link to the Volk library.
+target_link_libraries(${PROJECT_NAME} PRIVATE volk)
+
+# Link to the VkBootstrap library.
+target_link_libraries(${PROJECT_NAME} PRIVATE vk-bootstrap::vk-bootstrap)
+
+# Link to the VMA library.
+target_link_libraries(${PROJECT_NAME} PRIVATE GPUOpen::VulkanMemoryAllocator)

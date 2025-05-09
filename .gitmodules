@@ -7,3 +7,12 @@
 [submodule "vendored/assimp"]
 	path = vendored/assimp
 	url = https://github.com/assimp/assimp.git
+[submodule "vendored/volk"]
+	path = vendored/volk
+	url = https://github.com/zeux/volk.git
+[submodule "vendored/vk-bootstrap"]
+	path = vendored/vk-bootstrap
+	url = https://github.com/charles-lunarg/vk-bootstrap
+[submodule "vendored/VulkanMemoryAllocator"]
+	path = vendored/VulkanMemoryAllocator
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
