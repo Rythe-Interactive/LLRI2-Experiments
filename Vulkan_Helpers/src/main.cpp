@@ -11,6 +11,13 @@
 // C++
 #include <string>
 
+struct FrameData {
+	VkCommandPool commandPool = nullptr;
+	VkCommandBuffer mainCommandBuffer = nullptr;
+};
+
+constexpr unsigned int FRAME_OVERLAP = 2;
+
 struct MyAppState {
 	std::string name = "Hello, Vulkan with Helpers!";
 	SDL_Window* window = nullptr;
@@ -26,9 +33,15 @@ struct MyAppState {
 	std::vector<VkImage> swapchainImages;
 	std::vector<VkImageView> swapchainImageViews;
 	VkExtent2D swapchainExtent = {};
+
+	int frameNumber = 0;
+	FrameData frames[FRAME_OVERLAP];
+	FrameData& GetCurrentFrame() { return frames[frameNumber % FRAME_OVERLAP]; }
+	VkQueue graphicsQueue = nullptr;
+	uint32_t graphicsQueueFamilyIndex = 0;
 };
 
-///Returns true on success, false on failure
+/// Returns true on success, false on failure
 bool CreateSwapchain(MyAppState* myAppState, const uint32_t width, const uint32_t height) {
 	myAppState->swapchainImageFormat = VK_FORMAT_B8G8R8A8_UNORM;
 
@@ -70,7 +83,47 @@ void DestroySwapchain(const MyAppState* myAppState) {
 	}
 }
 
-///Returns true on success, false on failure
+VkCommandPoolCreateInfo CommandPoolCreateInfo(const uint32_t queueFamilyIndex, const VkCommandPoolCreateFlags flags = 0) {
+	return VkCommandPoolCreateInfo{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+		.pNext = nullptr,
+		.flags = flags,
+		.queueFamilyIndex = queueFamilyIndex,
+	};
+}
+
+VkCommandBufferAllocateInfo CommandBufferAllocateInfo(const VkCommandPool& commandPool, const uint32_t count = 1) {
+	return VkCommandBufferAllocateInfo{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+		.pNext = nullptr,
+		.commandPool = commandPool,
+		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+		.commandBufferCount = count,
+	};
+}
+
+
+/// Returns true on success, false on failure
+bool InitCommands(MyAppState* myAppState) {
+	const VkCommandPoolCreateInfo commandPoolCreateInfo = CommandPoolCreateInfo(myAppState->graphicsQueueFamilyIndex, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+
+	for (auto& [commandPool, mainCommandBuffer] : myAppState->frames) {
+		if (vkCreateCommandPool(myAppState->device, &commandPoolCreateInfo, nullptr, &commandPool) != VK_SUCCESS) {
+			SDL_Log("Couldn't create command pool: %s", SDL_GetError());
+			return false;
+		}
+
+		VkCommandBufferAllocateInfo commandBufferAllocateInfo = CommandBufferAllocateInfo(commandPool, 1);
+		if (vkAllocateCommandBuffers(myAppState->device, &commandBufferAllocateInfo, &mainCommandBuffer) != VK_SUCCESS) {
+			SDL_Log("Couldn't allocate command buffer: %s", SDL_GetError());
+			return false;
+		}
+	}
+
+	return true;
+}
+
+/// Returns true on success, false on failure
 bool InitVulkan(MyAppState* myAppState) {
 	//TODO: Maybe try SDL_Vulkan_LoadLibrary instead of Volk?
 	//Attempt to load Vulkan loader from the system
@@ -94,9 +147,9 @@ bool InitVulkan(MyAppState* myAppState) {
 	}
 
 	//Yoink the actual instance and debug messenger from the result
-	const vkb::Instance vkb_inst = inst_ret.value();
-	myAppState->instance = vkb_inst.instance;
-	myAppState->debugMessenger = vkb_inst.debug_messenger;
+	const vkb::Instance vkbInstance = inst_ret.value();
+	myAppState->instance = vkbInstance.instance;
+	myAppState->debugMessenger = vkbInstance.debug_messenger;
 
 	//Load all required Vulkan entrypoints, including all extensions; you can use Vulkan from here on as usual.
 	volkLoadInstance(myAppState->instance);
@@ -118,7 +171,7 @@ bool InitVulkan(MyAppState* myAppState) {
 	};
 
 	//Use VkBootstrap to select a physical device
-	vkb::PhysicalDeviceSelector selector(vkb_inst);
+	vkb::PhysicalDeviceSelector selector(vkbInstance);
 	vkb::Result<vkb::PhysicalDevice> physDev_ret = selector
 	                                               .set_minimum_version(1, 3)
 	                                               .set_required_features_13(features13)
@@ -132,21 +185,37 @@ bool InitVulkan(MyAppState* myAppState) {
 	}
 
 	//Yoink the physical device from the result
-	const vkb::PhysicalDevice& physicalDevice = physDev_ret.value();
+	const vkb::PhysicalDevice& vkbPhysicalDevice = physDev_ret.value();
 
 	//Use VkBootstrap to create the final Vulkan Device
-	vkb::DeviceBuilder deviceBuilder(physicalDevice);
-	vkb::Result<vkb::Device> device_ret = deviceBuilder
+	vkb::DeviceBuilder deviceBuilder(vkbPhysicalDevice);
+	vkb::Result<vkb::Device> vkbDevice = deviceBuilder
 		.build();
 
-	if (!device_ret.has_value()) {
-		SDL_Log("Couldn't create Vulkan device: %s", device_ret.error().message().c_str());
+	if (!vkbDevice.has_value()) {
+		SDL_Log("Couldn't create Vulkan device: %s", vkbDevice.error().message().c_str());
 		return false;
 	}
 
 	//Yoink the device from the result
-	myAppState->device = device_ret.value().device;
-	myAppState->physicalDevice = physicalDevice.physical_device;
+	myAppState->device = vkbDevice.value().device;
+	myAppState->physicalDevice = vkbPhysicalDevice.physical_device;
+
+	//Set up the Queue
+	vkb::QueueType queueType = vkb::QueueType::graphics;
+	vkb::Result<VkQueue> vkQueue = vkbDevice->get_queue(queueType);
+	if (!vkQueue.has_value()) {
+		SDL_Log("Couldn't get graphics queue: %s", vkQueue.error().message().c_str());
+		return false;
+	}
+	myAppState->graphicsQueue = vkQueue.value();
+
+	vkb::Result<uint32_t> queueIndex = vkbDevice->get_queue_index(queueType);
+	if (!queueIndex.has_value()) {
+		SDL_Log("Couldn't get graphics queue index: %s", queueIndex.error().message().c_str());
+		return false;
+	}
+	myAppState->graphicsQueueFamilyIndex = queueIndex.value();
 
 	return true;
 }
@@ -198,6 +267,12 @@ void SDL_AppQuit(void* appstate, const SDL_AppResult result) {
 	const MyAppState* myAppState = static_cast<MyAppState*>(appstate);
 
 	if (result == SDL_APP_SUCCESS) {
+		vkDeviceWaitIdle(myAppState->device);
+
+		for (auto [commandPool, mainCommandBuffer] : myAppState->frames) {
+			vkDestroyCommandPool(myAppState->device, commandPool, nullptr);
+		}
+
 		DestroySwapchain(myAppState);
 
 		vkDestroySurfaceKHR(myAppState->instance, myAppState->surface, nullptr);
