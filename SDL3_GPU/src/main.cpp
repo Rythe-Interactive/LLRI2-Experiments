@@ -23,8 +23,8 @@ constexpr bool debug_mode = true;
 #endif
 
 struct MyVertex {
-	rsl::math::float3 pos;
-	rsl::math::float2 tex;
+	math::float3 pos;
+	math::float2 tex;
 };
 
 struct MyMesh {
@@ -191,8 +191,8 @@ std::optional<MyMesh> ImportMesh(const std::filesystem::path& meshPath) {
 		const aiVector3D tex = mesh->mTextureCoords[0][i];
 		SDL_Log("Assimp: Vertex %d: pos{x: %f, y: %f, z: %f} tex{x: %f, y: %f, z: %f}", i, pos.x, pos.y, pos.z, tex.x, tex.y, tex.z);
 		vertices[i] = MyVertex{
-			.pos = rsl::math::float3(pos.x, pos.y, pos.z),
-			.tex = rsl::math::float2(tex.x, tex.y),
+			.pos = math::float3(pos.x, pos.y, pos.z),
+			.tex = math::float2(tex.x, tex.y),
 		};
 	}
 	// > Indices
@@ -520,23 +520,23 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 
 		//Uniforms
 		// > Model Matrix
-		rsl::math::float4x4 model = rsl::math::float4x4(1.0f);
+		math::float4x4 model = math::float4x4(1.0f);
 		SDL_PushGPUVertexUniformData(commandBuffer, 0, &model, sizeof(model));
 
 		// > View Matrix
 		constexpr float radius = 10.0f;
 		float camX = sinf(static_cast<float>(SDL_GetTicks()) / 1000.0f) * radius;
 		float camZ = cosf(static_cast<float>(SDL_GetTicks()) / 1000.0f) * radius;
-		rsl::math::float3 cameraPos = rsl::math::float3(camX, 3.0f, camZ); //BUG: Something is still wonky, here...
-		rsl::math::float3 cameraTarget = rsl::math::float3(0.0f, 0.0f, 0.0f);
-		rsl::math::float3 up = rsl::math::float3(0.0f, 1.0f, 0.0f);
-		rsl::math::float4x4 view = inverse(look_at(cameraPos, cameraTarget, up));
+		math::float3 cameraPos = math::float3(camX, 3.0f, camZ); //BUG: Something is still wonky, here...
+		math::float3 cameraTarget = math::float3(0.0f, 0.0f, 0.0f);
+		math::float3 up = math::float3(0.0f, 1.0f, 0.0f);
+		math::float4x4 view = inverse(look_at(cameraPos, cameraTarget, up));
 		SDL_PushGPUVertexUniformData(commandBuffer, 1, &view, sizeof(view));
 
 		// > Projection Matrix
-		rsl::math::int2 screenSize;
+		math::int2 screenSize;
 		SDL_GetWindowSize(myAppState->window, &screenSize.x, &screenSize.y);
-		rsl::math::float4x4 proj = perspective(rsl::math::degrees(45.0f).radians(),
+		math::float4x4 proj = perspective(math::degrees(45.0f).radians(),
 		                                       static_cast<float>(screenSize.x) / static_cast<float>(screenSize.y),
 		                                       0.1f, 100.0f);
 		SDL_PushGPUVertexUniformData(commandBuffer, 2, &proj, sizeof(proj));
