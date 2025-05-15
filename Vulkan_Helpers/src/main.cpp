@@ -19,6 +19,12 @@
 #define Q(x) #x
 #define QUOTE(x) Q(x)
 
+#ifdef NDEBUG
+constexpr bool debug_mode = false;
+#else
+constexpr bool debug_mode = true;
+#endif
+
 struct FrameData {
 	VkCommandPool commandPool = nullptr;
 	VkCommandBuffer mainCommandBuffer = nullptr;
@@ -181,12 +187,14 @@ bool InitVulkan(MyAppState* myAppState) {
 
 	//Make the Vulkan instance, with some debug features
 	vkb::InstanceBuilder builder;
-	vkb::Result<vkb::Instance> inst_ret = builder.set_app_name(myAppState->name.c_str())
-	                                             .set_app_version(1, 0, 0)
-	                                             .request_validation_layers(true)
-	                                             .use_default_debug_messenger()
-	                                             .require_api_version(1, 3, 0)
-	                                             .build();
+	builder.set_app_name(myAppState->name.c_str())
+	       .set_app_version(1, 0, 0)
+	       .require_api_version(1, 3, 0);
+	if constexpr (debug_mode) {
+		builder.request_validation_layers(true)
+		       .use_default_debug_messenger();
+	}
+	vkb::Result<vkb::Instance> inst_ret = builder.build();
 
 	if (!inst_ret.has_value()) {
 		SDL_Log("Couldn't create Vulkan instance: %s", inst_ret.error().message().c_str());
@@ -196,7 +204,9 @@ bool InitVulkan(MyAppState* myAppState) {
 	//Yoink the actual instance and debug messenger from the result
 	const vkb::Instance vkbInstance = inst_ret.value();
 	myAppState->instance = vkbInstance.instance;
-	myAppState->debugMessenger = vkbInstance.debug_messenger;
+	if constexpr (debug_mode) {
+		myAppState->debugMessenger = vkbInstance.debug_messenger;
+	}
 
 	//Load all required Vulkan entrypoints, including all extensions; you can use Vulkan from here on as usual.
 	volkLoadInstance(myAppState->instance);
@@ -491,10 +501,11 @@ void SDL_AppQuit(void* appstate, const SDL_AppResult result) {
 		vkDestroySurfaceKHR(myAppState->instance, myAppState->surface, nullptr);
 
 		vkDestroyDevice(myAppState->device, nullptr);
-		vkb::destroy_debug_utils_messenger(myAppState->instance, myAppState->debugMessenger);
+		if constexpr (debug_mode) {
+			vkb::destroy_debug_utils_messenger(myAppState->instance, myAppState->debugMessenger);
+		}
 		vkDestroyInstance(myAppState->instance, nullptr);
 	}
-
 
 	delete myAppState;
 }
