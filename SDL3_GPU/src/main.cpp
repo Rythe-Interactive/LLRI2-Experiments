@@ -530,7 +530,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 		rsl::math::float3 cameraPos = rsl::math::float3(camX, 3.0f, camZ); //BUG: Something is still wonky, here...
 		rsl::math::float3 cameraTarget = rsl::math::float3(0.0f, 0.0f, 0.0f);
 		rsl::math::float3 up = rsl::math::float3(0.0f, 1.0f, 0.0f);
-		rsl::math::float4x4 view = look_at(cameraPos, cameraTarget, up);
+		rsl::math::float4x4 view = inverse(look_at(cameraPos, cameraTarget, up));
 		SDL_PushGPUVertexUniformData(commandBuffer, 1, &view, sizeof(view));
 
 		// > Projection Matrix
