@@ -16,6 +16,10 @@
 #include <filesystem>
 #include <string>
 
+// Macros to retrieve CMake variables
+#define Q(x) #x
+#define QUOTE(x) Q(x)
+
 #ifdef NDEBUG
 constexpr bool debug_mode = false;
 #else
@@ -67,7 +71,7 @@ struct MyMesh {
 };
 
 struct MyAppState {
-	std::string name = "Hello, SDL3's GPU API!";
+	std::string name = QUOTE(MYPROJECT_NAME);
 	SDL_Window* window = nullptr;
 	SDL_GPUDevice* device = nullptr;
 	SDL_GPUGraphicsPipeline* pipeline = nullptr;

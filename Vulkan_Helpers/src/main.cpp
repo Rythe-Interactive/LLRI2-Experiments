@@ -15,6 +15,10 @@
 // C++
 #include <string>
 
+// Macros to retrieve CMake variables
+#define Q(x) #x
+#define QUOTE(x) Q(x)
+
 struct FrameData {
 	VkCommandPool commandPool = nullptr;
 	VkCommandBuffer mainCommandBuffer = nullptr;
@@ -27,7 +31,7 @@ struct FrameData {
 constexpr unsigned int FRAME_OVERLAP = 2;
 
 struct MyAppState {
-	std::string name = "Hello, Vulkan with Helpers!";
+	std::string name = QUOTE(MYPROJECT_NAME);
 	SDL_Window* window = nullptr;
 
 	VkInstance instance = nullptr;

@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.30)
 project(LLRI2_Experiments_SDL3_GPU)
+add_compile_definitions(MYPROJECT_NAME=${PROJECT_NAME})
 
 # Creates the TARGET for this project, which is the executable.
 # The commands after that require the TARGET to be created first.
