@@ -13,11 +13,17 @@
 #include <VkBootstrap.h>
 
 // C++
+#include <filesystem>
 #include <string>
 
 // Macros to retrieve CMake variables
 #define Q(x) #x
 #define QUOTE(x) Q(x)
+
+std::filesystem::path GetBasePath() {
+	const std::filesystem::path assetsDirName = std::string(QUOTE(MYPROJECT_NAME)) + "-assets";
+	return SDL_GetBasePath() / assetsDirName;
+}
 
 #ifdef NDEBUG
 constexpr bool debug_mode = false;

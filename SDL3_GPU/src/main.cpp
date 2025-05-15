@@ -20,6 +20,11 @@
 #define Q(x) #x
 #define QUOTE(x) Q(x)
 
+std::filesystem::path GetBasePath() {
+	const std::filesystem::path assetsDirName = std::string(QUOTE(MYPROJECT_NAME)) + "-assets";
+	return SDL_GetBasePath() / assetsDirName;
+}
+
 #ifdef NDEBUG
 constexpr bool debug_mode = false;
 #else
@@ -107,7 +112,7 @@ SDL_GPUShader* LoadShader(
 		SDL_Log("Device does not support SPIR-V shaders!");
 		return nullptr;
 	}
-	const std::filesystem::path fullPath = std::filesystem::path(SDL_GetBasePath()) / "assets/shaders/compiled/" / (shaderFilename + ".spv");
+	const std::filesystem::path fullPath = GetBasePath() / "shaders/compiled/" / (shaderFilename + ".spv");
 
 	size_t codeSize;
 	void* code = SDL_LoadFile(fullPath.string().c_str(), &codeSize);
@@ -142,7 +147,7 @@ SDL_GPUShader* LoadShader(
 /// @param imagePath Path to image file, relative from the directory where the application was run from.
 /// @param desiredChannels Colour channels of the image to load.
 SDL_Surface* LoadImage(const std::filesystem::path& imagePath, const int desiredChannels) {
-	const std::filesystem::path fullPath = std::filesystem::path(SDL_GetBasePath()) / imagePath;
+	const std::filesystem::path fullPath = std::filesystem::path(GetBasePath()) / imagePath;
 
 	SDL_Surface* result = SDL_LoadBMP(fullPath.string().c_str());
 	if (result == nullptr) {
@@ -168,7 +173,7 @@ SDL_Surface* LoadImage(const std::filesystem::path& imagePath, const int desired
 }
 
 std::optional<MyMesh> ImportMesh(const std::filesystem::path& meshPath) {
-	const std::filesystem::path fullPath = std::filesystem::path(SDL_GetBasePath()) / meshPath;
+	const std::filesystem::path fullPath = GetBasePath() / meshPath;
 	SDL_assert(is_regular_file(fullPath));
 	Assimp::Importer importer;
 
@@ -259,7 +264,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	}
 
 	// Load mesh
-	std::optional<MyMesh> oMesh = ImportMesh("assets/models/container/blender_quad.obj");
+	std::optional<MyMesh> oMesh = ImportMesh("models/suzanne/suzanne.obj");
 	if (!oMesh.has_value()) {
 		SDL_Log("Couldn't import mesh!");
 		return SDL_APP_FAILURE;

@@ -23,5 +23,5 @@ target_link_libraries(${PROJECT_NAME} PRIVATE assimp)
 
 # Copy assets to the build output directory after building.
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-		COMMAND ${CMAKE_COMMAND} -E copy_directory ${PROJECT_SOURCE_DIR}/assets $<TARGET_FILE_DIR:${PROJECT_NAME}>/assets
+		COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/${PROJECT_NAME}-assets"
 )
