@@ -263,6 +263,7 @@ bool InitVulkan(MyAppState* myAppState) {
 	return true;
 }
 
+// ReSharper disable twice CppParameterNeverUsed
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	MyAppState* myAppState = new MyAppState();
 	*appstate = myAppState;
