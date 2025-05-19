@@ -14,6 +14,7 @@
 
 // C++
 #include <filesystem>
+#include <fstream>
 #include <string>
 
 // Macros to retrieve CMake variables
@@ -63,7 +64,55 @@ struct MyAppState {
 	FrameData& GetCurrentFrame() { return frames[frameNumber % FRAME_OVERLAP]; }
 	VkQueue graphicsQueue = nullptr;
 	uint32_t graphicsQueueFamilyIndex = 0;
+
+	VkPipelineLayout trianglePipelineLayout;
+	VkPipeline trianglePipeline;
 };
+
+std::optional<VkShaderModule> LoadShaderModule(const char* filePath, VkDevice device) {
+	size_t fileSize;
+	uint32_t* contents = static_cast<uint32_t*>(SDL_LoadFile(filePath, &fileSize));
+	if (contents == nullptr) {
+		SDL_Log("Couldn't load shader from disk! %s\n%s", filePath, SDL_GetError());
+		return std::nullopt;
+	}
+
+	// create a new shader module, using the buffer we loaded
+	const VkShaderModuleCreateInfo createInfo = {
+		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+		// codeSize has to be in bytes, so multiply the ints in the buffer by size of int to know the real size of the buffer
+		.codeSize = fileSize,
+		.pCode = contents,
+	};
+
+	// check that the creation goes well.
+	VkShaderModule shaderModule;
+	if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+		return std::nullopt;
+	}
+	return shaderModule;
+}
+
+/// Returns true on success, false on failure
+bool InitTrianglePipeline(const MyAppState* myAppState) {
+	std::optional<VkShaderModule> triangleFragShader = LoadShaderModule("../../shaders/colored_triangle.frag.spv", myAppState->device);
+	if (!triangleFragShader.has_value()) {
+		SDL_Log("Error when building the triangle fragment shader module");
+	} else {
+		SDL_Log("Triangle fragment shader succesfully loaded");
+	}
+
+	std::optional<VkShaderModule> triangleVertexShader = LoadShaderModule("../../shaders/colored_triangle.vert.spv", myAppState->device);
+	if (!triangleVertexShader.has_value()) {
+		SDL_Log("Error when building the triangle vertex shader module");
+	} else {
+		SDL_Log("Triangle vertex shader succesfully loaded");
+	}
+
+	//build the pipeline layout that controls the inputs/outputs of the shader
+	//we are not using descriptor sets or other systems yet, so no need to use anything other than empty default
+	// VkPipelineLayoutCreateInfo pipelineLayoutInfo = PipelineLayoutCreateInfo();
+}
 
 /// Returns true on success, false on failure
 bool CreateSwapchain(MyAppState* myAppState, const uint32_t width, const uint32_t height) {
@@ -315,6 +364,10 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 		//SDL Log is handled in the function itself
 		return SDL_APP_FAILURE;
 	}
+
+	// if (!InitPipelines()) {
+	//
+	// }
 
 	return SDL_APP_CONTINUE;
 }
