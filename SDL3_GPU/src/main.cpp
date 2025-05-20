@@ -264,6 +264,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	}
 
 	// Load mesh
+	// std::optional<MyMesh> oMesh = ImportMesh("models/container/blender_quad.obj");
 	std::optional<MyMesh> oMesh = ImportMesh("models/suzanne/suzanne.obj");
 	if (!oMesh.has_value()) {
 		SDL_Log("Couldn't import mesh!");
