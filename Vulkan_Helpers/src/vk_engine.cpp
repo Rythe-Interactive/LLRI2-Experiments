@@ -138,7 +138,11 @@ SDL_AppResult VulkanEngine::InitSyncStructures() {
 		VK_CHECK(vkCreateFence(device, &fenceCreateInfo, nullptr, &frame.renderFence), "Couldn't create fence");
 
 		VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &frame.swapchainSemaphore), "Couldn't create swapchain semaphore");
-		VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &frame.renderSemaphore), "Couldn't create render semaphore");
+	}
+
+	readyForPresentSemaphores.resize(swapchainImages.size());
+	for (size_t i = 0; i < swapchainImages.size(); i++) {
+		VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &readyForPresentSemaphores[i]), "Couldn't create semaphore");
 	}
 
 	return SDL_APP_CONTINUE;
@@ -188,8 +192,11 @@ void VulkanEngine::DestroySwapchain() const {
 	vkDestroySwapchainKHR(device, swapchain, nullptr);
 
 	//Destroy swapchain resources
-	for (int i = 0; i < swapchainImageViews.size(); i++) {
-		vkDestroyImageView(device, swapchainImageViews[i], nullptr);
+	for (const VkImageView imageView : swapchainImageViews) {
+		vkDestroyImageView(device, imageView, nullptr);
+	}
+	for (const VkSemaphore semaphore : readyForPresentSemaphores) {
+		vkDestroySemaphore(device, semaphore, nullptr);
 	}
 }
 
@@ -241,7 +248,6 @@ SDL_AppResult VulkanEngine::Draw() {
 
 	uint32_t swapchainImageIndex;
 	VK_CHECK(vkAcquireNextImageKHR(device, swapchain, secondInNanoseconds, GetCurrentFrame().swapchainSemaphore, nullptr, &swapchainImageIndex), "Couldn't acquire next image");
-	SDL_Log("Swapchain Image Index: %d", swapchainImageIndex);
 
 	const VkCommandBuffer& commandBuffer = GetCurrentFrame().mainCommandBuffer;
 
@@ -269,7 +275,7 @@ SDL_AppResult VulkanEngine::Draw() {
 	const VkCommandBufferSubmitInfo commandBufferSubmitInfo = vk_init::CommandBufferSubmitInfo(commandBuffer);
 
 	const VkSemaphoreSubmitInfo waitInfo = vk_init::SemaphoreSubmitInfo(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR, GetCurrentFrame().swapchainSemaphore);
-	const VkSemaphoreSubmitInfo signalInfo = vk_init::SemaphoreSubmitInfo(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT, GetCurrentFrame().renderSemaphore);
+	const VkSemaphoreSubmitInfo signalInfo = vk_init::SemaphoreSubmitInfo(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT, readyForPresentSemaphores[swapchainImageIndex]);
 
 	const VkSubmitInfo2 submit = vk_init::SubmitInfo(&commandBufferSubmitInfo, &signalInfo, &waitInfo);
 	VK_CHECK(vkQueueSubmit2(graphicsQueue, 1, &submit, GetCurrentFrame().renderFence), "Couldn't submit command buffer");
@@ -277,7 +283,7 @@ SDL_AppResult VulkanEngine::Draw() {
 	const VkPresentInfoKHR presentInfo = {
 		.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
 		.waitSemaphoreCount = 1,
-		.pWaitSemaphores = &GetCurrentFrame().renderSemaphore,
+		.pWaitSemaphores = &readyForPresentSemaphores[swapchainImageIndex],
 		.swapchainCount = 1,
 		.pSwapchains = &swapchain,
 		.pImageIndices = &swapchainImageIndex,
@@ -299,7 +305,6 @@ void VulkanEngine::Cleanup(const SDL_AppResult result) const {
 
 			vkDestroyFence(device, frame.renderFence, nullptr);
 			vkDestroySemaphore(device, frame.swapchainSemaphore, nullptr);
-			vkDestroySemaphore(device, frame.renderSemaphore, nullptr);
 		}
 
 		DestroySwapchain();

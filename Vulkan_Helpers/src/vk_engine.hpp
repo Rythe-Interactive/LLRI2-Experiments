@@ -27,6 +27,7 @@ class VulkanEngine {
 	VkFormat swapchainImageFormat = VK_FORMAT_UNDEFINED;
 	std::vector<VkImage> swapchainImages;
 	std::vector<VkImageView> swapchainImageViews;
+	std::vector<VkSemaphore> readyForPresentSemaphores;
 	VkExtent2D swapchainExtent = {};
 
 	struct FrameData {
@@ -34,7 +35,6 @@ class VulkanEngine {
 		VkCommandBuffer mainCommandBuffer = nullptr;
 
 		VkSemaphore swapchainSemaphore = nullptr;
-		VkSemaphore renderSemaphore = nullptr;
 		VkFence renderFence = nullptr;
 	};
 
