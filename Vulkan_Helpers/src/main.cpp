@@ -1,10 +1,10 @@
+// C++
+#include <string>
+
 // SDL3
 #define SDL_MAIN_USE_CALLBACKS
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
-
-// C++
-#include <string>
 
 // Engine
 #include "vk_engine.hpp"
@@ -61,7 +61,7 @@ void SDL_AppQuit(void* appstate, const SDL_AppResult result) {
 			break;
 	}
 
-	const VulkanEngine* vulkanEngine = static_cast<VulkanEngine*>(appstate);
+	VulkanEngine* vulkanEngine = static_cast<VulkanEngine*>(appstate);
 	vulkanEngine->Cleanup(result);
 
 	delete vulkanEngine;

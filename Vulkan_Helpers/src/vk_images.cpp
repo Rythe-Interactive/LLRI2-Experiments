@@ -35,3 +35,42 @@ void vk_util::TransitionImage(const VkCommandBuffer& commandBuffer, const VkImag
 
 	vkCmdPipelineBarrier2(commandBuffer, &depInfo);
 }
+
+void vk_util::CopyImageToImage(const VkCommandBuffer commandBuffer, const VkImage source, const VkImage destination, const VkExtent2D srcSize, const VkExtent2D dstSize) {
+	VkImageBlit2 blitRegion{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
+		.srcSubresource = VkImageSubresourceLayers{
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.mipLevel = 0,
+			.baseArrayLayer = 0,
+			.layerCount = 1,
+		},
+		.dstSubresource = VkImageSubresourceLayers{
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.mipLevel = 0,
+			.baseArrayLayer = 0,
+			.layerCount = 1,
+		},
+	};
+
+	blitRegion.srcOffsets[1].x = srcSize.width;
+	blitRegion.srcOffsets[1].y = srcSize.height;
+	blitRegion.srcOffsets[1].z = 1;
+
+	blitRegion.dstOffsets[1].x = dstSize.width;
+	blitRegion.dstOffsets[1].y = dstSize.height;
+	blitRegion.dstOffsets[1].z = 1;
+
+	const VkBlitImageInfo2 blitInfo{
+		.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2,
+		.srcImage = source,
+		.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		.dstImage = destination,
+		.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		.regionCount = 1,
+		.pRegions = &blitRegion,
+		.filter = VK_FILTER_LINEAR,
+	};
+
+	vkCmdBlitImage2(commandBuffer, &blitInfo);
+}

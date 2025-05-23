@@ -1,16 +1,20 @@
 #pragma once
 
-// SDL3
-#include <SDL3/SDL.h>
-
-// Vulkan Helper Libraries
-#include <volk.h>
-
 // C++
 #include <filesystem>
 #include <string>
 #include <vector>
 
+// SDL3
+#include <SDL3/SDL.h>
+
+// Vulkan Helper Libraries
+// ReSharper disable once CppUnusedIncludeDirective
+#include <volk.h>
+#include <vk_mem_alloc.h>
+
+// Engine
+#include "vk_custom_types.hpp"
 
 class VulkanEngine {
 	const std::string name;
@@ -36,6 +40,8 @@ class VulkanEngine {
 
 		VkSemaphore swapchainSemaphore = nullptr;
 		VkFence renderFence = nullptr;
+
+		DeletionQueue frameDeletionQueue;
 	};
 
 	static constexpr unsigned int FRAME_OVERLAP = 2;
@@ -45,6 +51,14 @@ class VulkanEngine {
 	FrameData& GetCurrentFrame() { return frames[frameNumber % FRAME_OVERLAP]; }
 	VkQueue graphicsQueue = nullptr;
 	uint32_t graphicsQueueFamilyIndex = 0;
+
+	DeletionQueue mainDeletionQueue;
+
+	VmaAllocator vmaAllocator = nullptr;
+
+	//Draw Resources
+	AllocatedImage drawImage = {};
+	VkExtent2D drawExtent = {};
 
 private:
 	SDL_AppResult InitVulkan();
@@ -62,6 +76,7 @@ public:
 	[[nodiscard]] std::filesystem::path GetAssetsDir() const;
 
 	SDL_AppResult Init(int width, int height);
+	void DrawBackground(const VkCommandBuffer& commandBuffer, const VkImage& image) const;
 	SDL_AppResult Draw();
-	void Cleanup(SDL_AppResult result) const;
+	void Cleanup(SDL_AppResult result);
 };

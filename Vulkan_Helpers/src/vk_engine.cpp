@@ -10,6 +10,8 @@
 // Vulkan Helper Libraries
 #include <VkBootstrap.h>
 #include <volk.h>
+#define VMA_IMPLEMENTATION
+#include <vk_mem_alloc.h>
 
 // Engine
 #include "vk_images.hpp"
@@ -96,6 +98,7 @@ SDL_AppResult VulkanEngine::InitVulkan() {
 	vkb::Device vkbDevice = std::move(resVkbDevice.value());
 	device = vkbDevice.device;
 	physicalDevice = vkbPhysicalDevice.physical_device;
+	volkLoadDevice(device);
 
 	//Set up the Queue
 	vkb::QueueType queueType = vkb::QueueType::graphics;
@@ -112,6 +115,24 @@ SDL_AppResult VulkanEngine::InitVulkan() {
 		return SDL_APP_FAILURE;
 	}
 	graphicsQueueFamilyIndex = queueIndex.value();
+
+	// Set up VMA
+	VmaAllocatorCreateInfo allocatorCreateInfo{
+		.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+		.physicalDevice = physicalDevice,
+		.device = device,
+		.instance = instance,
+		.vulkanApiVersion = vkbInstance.api_version,
+	};
+
+	//Make VMA play nice with Volk
+	VmaVulkanFunctions vmaVulkanFunctions{};
+	vmaImportVulkanFunctionsFromVolk(&allocatorCreateInfo, &vmaVulkanFunctions);
+	allocatorCreateInfo.pVulkanFunctions = &vmaVulkanFunctions;
+
+	VK_CHECK(vmaCreateAllocator(&allocatorCreateInfo, &vmaAllocator), "Couldn't create VMA allocator");
+
+	mainDeletionQueue.PushFunction([&] { vmaDestroyAllocator(vmaAllocator); });
 
 	return SDL_APP_CONTINUE;
 }
@@ -185,17 +206,58 @@ SDL_AppResult VulkanEngine::InitSwapchain() {
 		SDL_Log("Couldn't get window size: %s", SDL_GetError());
 		return SDL_APP_FAILURE;
 	}
-	return CreateSwapchain(width, height);
+	const uint32_t uWidth = static_cast<uint32_t>(width);
+	const uint32_t uHeight = static_cast<uint32_t>(height);
+
+	//draw image size will match the window
+	if (const SDL_AppResult res = CreateSwapchain(uWidth, uHeight); res != SDL_APP_CONTINUE) {
+		return res;
+	}
+
+	const VkExtent3D drawImageExtent = {uWidth, uHeight, 1};
+
+	//hardcoding the draw format to 32-bit float
+	drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+	drawImage.imageExtent = drawImageExtent;
+
+	VkImageUsageFlags drawImageUsages{};
+	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+	drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+	const VkImageCreateInfo drawImageCreateInfo = vk_init::ImageCreateInfo(drawImage.imageFormat, drawImageUsages, drawImageExtent);
+
+	//for the draw image, we want to allocate it from gpu local memory
+	constexpr VmaAllocationCreateInfo drawImageAllocationInfo = {
+		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
+		.requiredFlags = VkMemoryPropertyFlags{VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT},
+	};
+	//allocate and create the image
+	VK_CHECK(vmaCreateImage(vmaAllocator, &drawImageCreateInfo, &drawImageAllocationInfo, &drawImage.image, &drawImage.allocation, nullptr), "Couldn't create image");
+
+	//build an image-view for the draw image to use for rendering
+	const VkImageViewCreateInfo drawImageViewCreateInfo = vk_init::ImageViewCreateInfo(drawImage.imageFormat, drawImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
+
+	VK_CHECK(vkCreateImageView(device, &drawImageViewCreateInfo, nullptr, &drawImage.imageView), "Couldn't create image view");
+
+	//add to deletion queues
+	mainDeletionQueue.PushFunction([&] {
+		vkDestroyImageView(device, drawImage.imageView, nullptr);
+		vmaDestroyImage(vmaAllocator, drawImage.image, drawImage.allocation);
+	});
+
+	return SDL_APP_CONTINUE;
 }
 
 void VulkanEngine::DestroySwapchain() const {
 	vkDestroySwapchainKHR(device, swapchain, nullptr);
 
 	//Destroy swapchain resources
-	for (const VkImageView imageView : swapchainImageViews) {
+	for (const VkImageView& imageView : swapchainImageViews) {
 		vkDestroyImageView(device, imageView, nullptr);
 	}
-	for (const VkSemaphore semaphore : readyForPresentSemaphores) {
+	for (const VkSemaphore& semaphore : readyForPresentSemaphores) {
 		vkDestroySemaphore(device, semaphore, nullptr);
 	}
 }
@@ -240,10 +302,24 @@ SDL_AppResult VulkanEngine::Init(const int width, const int height) {
 	return SDL_APP_CONTINUE;
 }
 
+void VulkanEngine::DrawBackground(const VkCommandBuffer& commandBuffer, const VkImage& image) const {
+	const float flash = std::abs(math::sin(static_cast<float>(frameNumber) / 120.f));
+	const VkClearColorValue clearValue = {
+		.float32 = {0.0f, 0.0f, flash, 1.0f},
+	};
+
+	const VkImageSubresourceRange clearRange = vk_util::ImageSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT);
+
+	vkCmdClearColorImage(commandBuffer, image, VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
+}
+
 SDL_AppResult VulkanEngine::Draw() {
 	constexpr uint64_t secondInNanoseconds = 1'000'000'000;
 
 	VK_CHECK(vkWaitForFences(device, 1, &GetCurrentFrame().renderFence, true, secondInNanoseconds), "Couldn't wait for fence");
+
+	GetCurrentFrame().frameDeletionQueue.Flush();
+
 	VK_CHECK(vkResetFences(device, 1, &GetCurrentFrame().renderFence), "Couldn't reset fence");
 
 	uint32_t swapchainImageIndex;
@@ -255,21 +331,28 @@ SDL_AppResult VulkanEngine::Draw() {
 
 	const VkCommandBufferBeginInfo commandBufferBeginInfo = vk_init::CommandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
+	drawExtent.width = drawImage.imageExtent.width;
+	drawExtent.height = drawImage.imageExtent.height;
+
 	VK_CHECK(vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo), "Couldn't begin command buffer");
 
-	vk_util::TransitionImage(commandBuffer, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+	// transition our main draw image into general layout so we can write into it.
+	// we will overwrite it all so we don't care about what was the older layout
+	vk_util::TransitionImage(commandBuffer, drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
-	const float flash = std::abs(math::sin(static_cast<float>(frameNumber) / 120.f));
-	const VkClearColorValue clearValue = {
-		.float32 = {0.0f, 0.0f, flash, 1.0f},
-	};
+	DrawBackground(commandBuffer, drawImage.image);
 
-	const VkImageSubresourceRange clearRange = vk_util::ImageSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT);
+	//transition the draw image and the swapchain image into their correct transfer layouts
+	vk_util::TransitionImage(commandBuffer, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	vk_util::TransitionImage(commandBuffer, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-	vkCmdClearColorImage(commandBuffer, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
+	// execute a copy from the draw image into the swapchain
+	vk_util::CopyImageToImage(commandBuffer, drawImage.image, swapchainImages[swapchainImageIndex], drawExtent, swapchainExtent);
 
-	vk_util::TransitionImage(commandBuffer, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+	// set swapchain image layout to Present so we can show it on the screen
+	vk_util::TransitionImage(commandBuffer, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
+	//finalize the command buffer (we can no longer add commands, but it can now be executed)
 	VK_CHECK(vkEndCommandBuffer(commandBuffer), "Couldn't end command buffer");
 
 	const VkCommandBufferSubmitInfo commandBufferSubmitInfo = vk_init::CommandBufferSubmitInfo(commandBuffer);
@@ -296,16 +379,20 @@ SDL_AppResult VulkanEngine::Draw() {
 	return SDL_APP_CONTINUE;
 }
 
-void VulkanEngine::Cleanup(const SDL_AppResult result) const {
+void VulkanEngine::Cleanup(const SDL_AppResult result) {
 	if (result == SDL_APP_SUCCESS) {
 		vkDeviceWaitIdle(device);
 
-		for (const FrameData& frame : frames) {
+		for (FrameData& frame : frames) {
 			vkDestroyCommandPool(device, frame.commandPool, nullptr);
 
 			vkDestroyFence(device, frame.renderFence, nullptr);
 			vkDestroySemaphore(device, frame.swapchainSemaphore, nullptr);
+
+			frame.frameDeletionQueue.Flush();
 		}
+
+		mainDeletionQueue.Flush();
 
 		DestroySwapchain();
 
