@@ -10,8 +10,10 @@ add_compile_definitions(MYPROJECT_NAME=${PROJECT_NAME})
 add_executable(${PROJECT_NAME} WIN32
 		src/main.cpp
 		src/vk_engine.cpp
+		src/vk_descriptors.cpp
 		src/vk_images.cpp
 		src/vk_initializers.cpp
+		src/vk_pipelines.cpp
 )
 
 # Set C++ version

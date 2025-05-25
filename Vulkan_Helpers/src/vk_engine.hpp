@@ -15,6 +15,7 @@
 
 // Engine
 #include "vk_custom_types.hpp"
+#include "vk_descriptors.hpp"
 
 class VulkanEngine {
 	const std::string name;
@@ -60,6 +61,14 @@ class VulkanEngine {
 	AllocatedImage drawImage = {};
 	VkExtent2D drawExtent = {};
 
+	DescriptorAllocator globalDescriptorAllocator = {};
+
+	VkDescriptorSet drawImageDescriptors = nullptr;
+	VkDescriptorSetLayout drawImageDescriptorLayout = nullptr;
+
+	VkPipeline gradientPipeline = nullptr;
+	VkPipelineLayout gradientPipelineLayout = nullptr;
+
 private:
 	SDL_AppResult InitVulkan();
 	SDL_AppResult InitCommands();
@@ -69,6 +78,13 @@ private:
 	SDL_AppResult CreateSwapchain(uint32_t width, uint32_t height);
 	SDL_AppResult InitSwapchain();
 	void DestroySwapchain() const;
+
+private:
+	SDL_AppResult InitDescriptors();
+
+private:
+	SDL_AppResult InitPipelines();
+	SDL_AppResult InitBackgroundPipelines();
 
 public:
 	VulkanEngine(std::string name, bool debugMode);

@@ -17,6 +17,7 @@
 #include "vk_images.hpp"
 #include "vk_initializers.hpp"
 #include "vk_macros.hpp"
+#include "vk_pipelines.hpp"
 
 #pragma region Vulkan Initialization
 
@@ -262,6 +263,108 @@ void VulkanEngine::DestroySwapchain() const {
 	}
 }
 
+SDL_AppResult VulkanEngine::InitDescriptors() {
+	//create a descriptor pool that will hold 10 sets with 1 image each
+	std::vector sizes =
+	{
+		DescriptorAllocator::PoolSizeRatio{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}
+	};
+
+	globalDescriptorAllocator.InitPool(device, 10, sizes);
+
+	//make the descriptor set layout for our compute draw
+	{
+		DescriptorLayoutBuilder builder;
+		builder.AddBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+		const std::optional<VkDescriptorSetLayout> buildResult = builder.Build(device, VK_SHADER_STAGE_COMPUTE_BIT);
+		if (!buildResult.has_value()) {
+			SDL_Log("Couldn't create descriptor set layout for draw image");
+			return SDL_APP_FAILURE;
+		}
+		drawImageDescriptorLayout = buildResult.value();
+	}
+
+	//allocate a descriptor set for our draw image
+	const std::optional<VkDescriptorSet> allocationResult = globalDescriptorAllocator.Allocate(device, drawImageDescriptorLayout);
+	if (!allocationResult.has_value()) {
+		SDL_Log("Couldn't allocate descriptor set for draw image");
+		return SDL_APP_FAILURE;
+	}
+	drawImageDescriptors = allocationResult.value();
+
+	VkDescriptorImageInfo imgInfo{
+		.imageView = drawImage.imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_GENERAL,
+	};
+
+	const VkWriteDescriptorSet drawImageWrite = {
+		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+		.dstSet = drawImageDescriptors,
+		.dstBinding = 0,
+		.descriptorCount = 1,
+		.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+		.pImageInfo = &imgInfo,
+	};
+
+	vkUpdateDescriptorSets(device, 1, &drawImageWrite, 0, nullptr);
+
+	//make sure both the descriptor allocator and the new layout get cleaned up properly
+	mainDeletionQueue.PushFunction([&] {
+		globalDescriptorAllocator.DestroyPool(device);
+		vkDestroyDescriptorSetLayout(device, drawImageDescriptorLayout, nullptr);
+	});
+
+	return SDL_APP_CONTINUE;
+}
+
+SDL_AppResult VulkanEngine::InitPipelines() {
+	return InitBackgroundPipelines();
+}
+
+SDL_AppResult VulkanEngine::InitBackgroundPipelines() {
+	const VkPipelineLayoutCreateInfo computeLayout{
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+		.setLayoutCount = 1,
+		.pSetLayouts = &drawImageDescriptorLayout,
+	};
+
+	VK_CHECK(vkCreatePipelineLayout(device, &computeLayout, nullptr, &gradientPipelineLayout), "Couldn't create pipeline layout");
+
+	const std::filesystem::path fullPath = GetAssetsDir() / "shaders/compiled/" / "gradient.comp.spv";
+
+	const std::optional<VkShaderModule> computeDrawShaderResult = vk_util::LoadShaderModule(fullPath.string().c_str(), device);
+	if (!computeDrawShaderResult.has_value()) {
+		SDL_Log("Couldn't load compute shader module");
+		return SDL_APP_FAILURE;
+	}
+	const VkShaderModule computeDrawShader = computeDrawShaderResult.value();
+
+	const VkPipelineShaderStageCreateInfo stageCreateInfo{
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+		.module = computeDrawShader,
+		.pName = "main",
+	};
+
+	const VkComputePipelineCreateInfo computePipelineCreateInfo{
+		.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+		.pNext = nullptr,
+		.stage = stageCreateInfo,
+		.layout = gradientPipelineLayout,
+	};
+
+	VK_CHECK(vkCreateComputePipelines(device,VK_NULL_HANDLE,1,&computePipelineCreateInfo, nullptr, &gradientPipeline), "Couldn't create compute pipeline");
+
+	vkDestroyShaderModule(device, computeDrawShader, nullptr);
+
+	mainDeletionQueue.PushFunction([&] {
+		vkDestroyPipelineLayout(device, gradientPipelineLayout, nullptr);
+		vkDestroyPipeline(device, gradientPipeline, nullptr);
+	});
+
+	return SDL_APP_CONTINUE;
+}
+
 #pragma endregion
 
 VulkanEngine::VulkanEngine(std::string name, const bool debugMode)
@@ -299,18 +402,23 @@ SDL_AppResult VulkanEngine::Init(const int width, const int height) {
 		return res;
 	}
 
+	if (const SDL_AppResult res = InitDescriptors(); res != SDL_APP_CONTINUE) {
+		return res;
+	}
+
+	if (const SDL_AppResult res = InitPipelines(); res != SDL_APP_CONTINUE) {
+		return res;
+	}
+
 	return SDL_APP_CONTINUE;
 }
 
 void VulkanEngine::DrawBackground(const VkCommandBuffer& commandBuffer, const VkImage& image) const {
-	const float flash = std::abs(math::sin(static_cast<float>(frameNumber) / 120.f));
-	const VkClearColorValue clearValue = {
-		.float32 = {0.0f, 0.0f, flash, 1.0f},
-	};
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, gradientPipeline);
 
-	const VkImageSubresourceRange clearRange = vk_util::ImageSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT);
+	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, gradientPipelineLayout, 0, 1, &drawImageDescriptors, 0, nullptr);
 
-	vkCmdClearColorImage(commandBuffer, image, VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
+	vkCmdDispatch(commandBuffer, std::ceil(drawExtent.width / 16.0), std::ceil(drawExtent.height / 16.0), 1);
 }
 
 SDL_AppResult VulkanEngine::Draw() {
