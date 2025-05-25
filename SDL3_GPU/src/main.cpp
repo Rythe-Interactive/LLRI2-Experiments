@@ -20,7 +20,7 @@
 #define Q(x) #x
 #define QUOTE(x) Q(x)
 
-std::filesystem::path GetBasePath() {
+std::filesystem::path GetAssetsDir() {
 	const std::filesystem::path assetsDirName = std::string(QUOTE(MYPROJECT_NAME)) + "-assets";
 	return SDL_GetBasePath() / assetsDirName;
 }
@@ -112,7 +112,7 @@ SDL_GPUShader* LoadShader(
 		SDL_Log("Device does not support SPIR-V shaders!");
 		return nullptr;
 	}
-	const std::filesystem::path fullPath = GetBasePath() / "shaders/compiled/" / (shaderFilename + ".spv");
+	const std::filesystem::path fullPath = GetAssetsDir() / "shaders/compiled/" / (shaderFilename + ".spv");
 
 	size_t codeSize;
 	void* code = SDL_LoadFile(fullPath.string().c_str(), &codeSize);
@@ -147,7 +147,7 @@ SDL_GPUShader* LoadShader(
 /// @param imagePath Path to image file, relative from the directory where the application was run from.
 /// @param desiredChannels Colour channels of the image to load.
 SDL_Surface* LoadImage(const std::filesystem::path& imagePath, const int desiredChannels) {
-	const std::filesystem::path fullPath = std::filesystem::path(GetBasePath()) / imagePath;
+	const std::filesystem::path fullPath = GetAssetsDir() / imagePath;
 
 	SDL_Surface* result = SDL_LoadBMP(fullPath.string().c_str());
 	if (result == nullptr) {
@@ -173,7 +173,7 @@ SDL_Surface* LoadImage(const std::filesystem::path& imagePath, const int desired
 }
 
 std::optional<MyMesh> ImportMesh(const std::filesystem::path& meshPath) {
-	const std::filesystem::path fullPath = GetBasePath() / meshPath;
+	const std::filesystem::path fullPath = GetAssetsDir() / meshPath;
 	SDL_assert(is_regular_file(fullPath));
 	Assimp::Importer importer;
 
@@ -547,8 +547,8 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 		math::int2 screenSize;
 		SDL_GetWindowSize(myAppState->window, &screenSize.x, &screenSize.y);
 		math::float4x4 proj = perspective(math::degrees(45.0f).radians(),
-		                                       static_cast<float>(screenSize.x) / static_cast<float>(screenSize.y),
-		                                       0.1f, 100.0f);
+		                                  static_cast<float>(screenSize.x) / static_cast<float>(screenSize.y),
+		                                  0.1f, 100.0f);
 		SDL_PushGPUVertexUniformData(commandBuffer, 2, &proj, sizeof(proj));
 
 		SDL_DrawGPUIndexedPrimitives(renderPass, myAppState->mesh->indices.size(), 1, 0, 0, 0);
