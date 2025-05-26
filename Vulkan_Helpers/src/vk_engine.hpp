@@ -69,6 +69,9 @@ class VulkanEngine {
 	VkPipeline gradientPipeline = nullptr;
 	VkPipelineLayout gradientPipelineLayout = nullptr;
 
+	VkPipeline trianglePipeline = nullptr;
+	VkPipelineLayout trianglePipelineLayout = nullptr;
+
 private:
 	SDL_AppResult InitVulkan();
 	SDL_AppResult InitCommands();
@@ -85,6 +88,11 @@ private:
 private:
 	SDL_AppResult InitPipelines();
 	SDL_AppResult InitBackgroundPipelines();
+	SDL_AppResult InitTrianglePipelines();
+
+private:
+	void DrawBackground(const VkCommandBuffer& commandBuffer, const VkImage& image) const;
+	void DrawGeometry(const VkCommandBuffer& commandBuffer) const;
 
 public:
 	VulkanEngine(std::string name, bool debugMode);
@@ -92,7 +100,6 @@ public:
 	[[nodiscard]] std::filesystem::path GetAssetsDir() const;
 
 	SDL_AppResult Init(int width, int height);
-	void DrawBackground(const VkCommandBuffer& commandBuffer, const VkImage& image) const;
 	SDL_AppResult Draw();
 	void Cleanup(SDL_AppResult result);
 };

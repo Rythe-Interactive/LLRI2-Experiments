@@ -318,7 +318,14 @@ SDL_AppResult VulkanEngine::InitDescriptors() {
 }
 
 SDL_AppResult VulkanEngine::InitPipelines() {
-	return InitBackgroundPipelines();
+	if (const SDL_AppResult res = InitBackgroundPipelines(); res != SDL_APP_CONTINUE) {
+		return res;
+	}
+	if (const SDL_AppResult res = InitTrianglePipelines(); res != SDL_APP_CONTINUE) {
+		return res;
+	}
+
+	return SDL_APP_CONTINUE;
 }
 
 SDL_AppResult VulkanEngine::InitBackgroundPipelines() {
@@ -337,7 +344,7 @@ SDL_AppResult VulkanEngine::InitBackgroundPipelines() {
 		SDL_Log("Couldn't load compute shader module");
 		return SDL_APP_FAILURE;
 	}
-	const VkShaderModule computeDrawShader = computeDrawShaderResult.value();
+	const VkShaderModule& computeDrawShader = computeDrawShaderResult.value();
 
 	const VkPipelineShaderStageCreateInfo stageCreateInfo{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -360,6 +367,68 @@ SDL_AppResult VulkanEngine::InitBackgroundPipelines() {
 	mainDeletionQueue.PushFunction([&] {
 		vkDestroyPipelineLayout(device, gradientPipelineLayout, nullptr);
 		vkDestroyPipeline(device, gradientPipeline, nullptr);
+	});
+
+	return SDL_APP_CONTINUE;
+}
+
+SDL_AppResult VulkanEngine::InitTrianglePipelines() {
+	VkShaderModule triangleFragShader;
+	{
+		const std::filesystem::path fullPath = GetAssetsDir() / "shaders/compiled/" / "triangle.frag.spv";
+		if (const std::optional<VkShaderModule> triangleFragShaderResult = vk_util::LoadShaderModule(fullPath.string().c_str(), device); !triangleFragShaderResult.has_value()) {
+			SDL_Log("Couldn't load triangle fragment shader module");
+			return SDL_APP_FAILURE;
+		} else {
+			triangleFragShader = triangleFragShaderResult.value();
+		}
+	}
+
+	VkShaderModule triangleVertShader;
+	{
+		const std::filesystem::path fullPath = GetAssetsDir() / "shaders/compiled/" / "triangle.vert.spv";
+		if (const std::optional<VkShaderModule> triangleVertShaderResult = vk_util::LoadShaderModule(fullPath.string().c_str(), device); !triangleVertShaderResult.has_value()) {
+			SDL_Log("Couldn't load triangle vertex shader module");
+			return SDL_APP_FAILURE;
+		} else {
+			triangleVertShader = triangleVertShaderResult.value();
+		}
+	}
+
+	//we are not using descriptor sets or other systems yet, so no need to use anything other than empty default
+	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = vk_init::PipelineLayoutCreateInfo();
+	VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, nullptr, &trianglePipelineLayout), "Couldn't create triangle pipeline layout");
+	PipelineBuilder pipelineBuilder;
+
+	//use the triangle layout we created
+	pipelineBuilder.pipelineLayout = trianglePipelineLayout;
+	pipelineBuilder.SetShaders(triangleVertShader, triangleFragShader);
+	pipelineBuilder.SetInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	pipelineBuilder.SetPolygonMode(VK_POLYGON_MODE_FILL);
+	pipelineBuilder.SetCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+	pipelineBuilder.SetMultiSamplingNone();
+	pipelineBuilder.DisableBlending();
+	pipelineBuilder.DisableDepthTest();
+
+	//connect the image format we will draw into, from draw image
+	pipelineBuilder.SetColourAttachmentFormat(drawImage.imageFormat);
+	pipelineBuilder.SetDepthFormat(VK_FORMAT_UNDEFINED);
+
+	//finally build the pipeline
+	const std::optional<VkPipeline> pipelineResult = pipelineBuilder.BuildPipeline(device);
+	if (!pipelineResult.has_value()) {
+		SDL_Log("Couldn't build triangle pipeline");
+		return SDL_APP_FAILURE;
+	}
+	trianglePipeline = pipelineResult.value();
+
+	//clean structures
+	vkDestroyShaderModule(device, triangleFragShader, nullptr);
+	vkDestroyShaderModule(device, triangleVertShader, nullptr);
+
+	mainDeletionQueue.PushFunction([&] {
+		vkDestroyPipelineLayout(device, trianglePipelineLayout, nullptr);
+		vkDestroyPipeline(device, trianglePipeline, nullptr);
 	});
 
 	return SDL_APP_CONTINUE;
@@ -421,6 +490,47 @@ void VulkanEngine::DrawBackground(const VkCommandBuffer& commandBuffer, const Vk
 	vkCmdDispatch(commandBuffer, std::ceil(drawExtent.width / 16.0), std::ceil(drawExtent.height / 16.0), 1);
 }
 
+void VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) const {
+	//begin a render pass  connected to our draw image
+	const VkRenderingAttachmentInfo colorAttachment = vk_init::AttachmentInfo(drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+	const VkRenderingInfo renderInfo = vk_init::RenderingInfo(drawExtent, &colorAttachment, nullptr);
+	vkCmdBeginRendering(commandBuffer, &renderInfo);
+
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, trianglePipeline);
+
+	//set dynamic viewport and scissor
+	const VkViewport viewport{
+		.x = 0,
+		.y = 0,
+		.width = static_cast<float>(drawExtent.width),
+		.height = static_cast<float>(drawExtent.height),
+		.minDepth = 0.0f,
+		.maxDepth = 1.0f,
+	};
+
+	vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+	const VkRect2D scissor = {
+		.offset = VkOffset2D{
+			.x = 0,
+			.y = 0
+		},
+		.extent = VkExtent2D{
+			.width = drawExtent.width,
+			.height = drawExtent.height,
+		},
+	};
+
+	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+	//launch a draw command to draw 3 vertices
+	vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+
+	vkCmdEndRendering(commandBuffer);
+}
+
+
 SDL_AppResult VulkanEngine::Draw() {
 	constexpr uint64_t secondInNanoseconds = 1'000'000'000;
 
@@ -450,8 +560,12 @@ SDL_AppResult VulkanEngine::Draw() {
 
 	DrawBackground(commandBuffer, drawImage.image);
 
+	vk_util::TransitionImage(commandBuffer, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+	DrawGeometry(commandBuffer);
+
 	//transition the draw image and the swapchain image into their correct transfer layouts
-	vk_util::TransitionImage(commandBuffer, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	vk_util::TransitionImage(commandBuffer, drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 	vk_util::TransitionImage(commandBuffer, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 	// execute a copy from the draw image into the swapchain
@@ -471,7 +585,7 @@ SDL_AppResult VulkanEngine::Draw() {
 	const VkSubmitInfo2 submit = vk_init::SubmitInfo(&commandBufferSubmitInfo, &signalInfo, &waitInfo);
 	VK_CHECK(vkQueueSubmit2(graphicsQueue, 1, &submit, GetCurrentFrame().renderFence), "Couldn't submit command buffer");
 
-	const VkPresentInfoKHR presentInfo = {
+	const VkPresentInfoKHR presentInfo{
 		.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
 		.waitSemaphoreCount = 1,
 		.pWaitSemaphores = &readyForPresentSemaphores[swapchainImageIndex],
