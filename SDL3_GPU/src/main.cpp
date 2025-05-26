@@ -319,7 +319,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 			.offset = sizeof(float) * 3,
 		},
 	};
-	SDL_GPUColorTargetDescription colorTargetDescriptions[]{
+	SDL_GPUColorTargetDescription colourTargetDescriptions[]{
 		SDL_GPUColorTargetDescription{
 			.format = SDL_GetGPUSwapchainTextureFormat(myAppState->device, myAppState->window)
 		}
@@ -338,7 +338,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 			.fill_mode = SDL_GPU_FILLMODE_FILL,
 		},
 		.target_info = SDL_GPUGraphicsPipelineTargetInfo{
-			.color_target_descriptions = colorTargetDescriptions,
+			.color_target_descriptions = colourTargetDescriptions,
 			.num_color_targets = 1,
 		},
 	};
@@ -499,14 +499,14 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 	}
 
 	if (swapchainTexture != nullptr) {
-		const SDL_GPUColorTargetInfo colorTargetInfo = {
+		const SDL_GPUColorTargetInfo colourTargetInfo = {
 			.texture = swapchainTexture,
 			.clear_color = SDL_FColor{0.3f, 0.4f, 0.5f, 1.0f},
 			.load_op = SDL_GPU_LOADOP_CLEAR,
 			.store_op = SDL_GPU_STOREOP_STORE,
 		};
 
-		SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(commandBuffer, &colorTargetInfo, 1, nullptr);
+		SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(commandBuffer, &colourTargetInfo, 1, nullptr);
 
 		SDL_BindGPUGraphicsPipeline(renderPass, myAppState->pipeline);
 

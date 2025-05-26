@@ -36,7 +36,7 @@ void vk_util::TransitionImage(const VkCommandBuffer& commandBuffer, const VkImag
 	vkCmdPipelineBarrier2(commandBuffer, &depInfo);
 }
 
-void vk_util::CopyImageToImage(const VkCommandBuffer commandBuffer, const VkImage source, const VkImage destination, const VkExtent2D srcSize, const VkExtent2D dstSize) {
+void vk_util::CopyImageToImage(const VkCommandBuffer& commandBuffer, const VkImage& source, const VkImage& destination, const VkExtent2D srcSize, const VkExtent2D dstSize) {
 	VkImageBlit2 blitRegion{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
 		.srcSubresource = VkImageSubresourceLayers{
@@ -53,12 +53,12 @@ void vk_util::CopyImageToImage(const VkCommandBuffer commandBuffer, const VkImag
 		},
 	};
 
-	blitRegion.srcOffsets[1].x = srcSize.width;
-	blitRegion.srcOffsets[1].y = srcSize.height;
+	blitRegion.srcOffsets[1].x = static_cast<int32_t>(srcSize.width);
+	blitRegion.srcOffsets[1].y = static_cast<int32_t>(srcSize.height);
 	blitRegion.srcOffsets[1].z = 1;
 
-	blitRegion.dstOffsets[1].x = dstSize.width;
-	blitRegion.dstOffsets[1].y = dstSize.height;
+	blitRegion.dstOffsets[1].x = static_cast<int32_t>(dstSize.width);
+	blitRegion.dstOffsets[1].y = static_cast<int32_t>(dstSize.height);
 	blitRegion.dstOffsets[1].z = 1;
 
 	const VkBlitImageInfo2 blitInfo{
