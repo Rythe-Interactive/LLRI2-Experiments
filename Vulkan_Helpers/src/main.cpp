@@ -6,6 +6,11 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
+// Dear ImGui
+#include "imgui.h"
+#include "imgui_impl_sdl3.h"
+#include "imgui_impl_vulkan.h"
+
 // Engine
 #include "vk_engine.hpp"
 
@@ -39,11 +44,22 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 		default:
 			break;
 	}
+
+	ImGui_ImplSDL3_ProcessEvent(event);
+
 	return SDL_APP_CONTINUE;
 }
 
 SDL_AppResult SDL_AppIterate(void* appstate) {
 	VulkanEngine* vulkanEngine = static_cast<VulkanEngine*>(appstate);
+
+	ImGui_ImplVulkan_NewFrame();
+	ImGui_ImplSDL3_NewFrame();
+	ImGui::NewFrame();
+
+	ImGui::ShowDemoWindow();
+
+	ImGui::Render();
 
 	vulkanEngine->Draw();
 

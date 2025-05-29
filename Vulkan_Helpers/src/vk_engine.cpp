@@ -13,6 +13,11 @@
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
 
+// Dear ImGui
+#include "imgui.h"
+#include "imgui_impl_sdl3.h"
+#include "imgui_impl_vulkan.h"
+
 // Engine
 #include "vk_images.hpp"
 #include "vk_initializers.hpp"
@@ -149,6 +154,12 @@ SDL_AppResult VulkanEngine::InitCommands() {
 		VK_CHECK(vkAllocateCommandBuffers(device, &commandBufferAllocateInfo, &frame.mainCommandBuffer), "Couldn't allocate command buffer");
 	}
 
+	VK_CHECK(vkCreateCommandPool(device, &commandPoolCreateInfo, nullptr, &immediateSubmitCommandPool), "Couldn't create immediate submit command pool");
+
+	const VkCommandBufferAllocateInfo immediateCommandBufferAllocateInfo = vk_init::CommandBufferAllocateInfo(immediateSubmitCommandPool, 1);
+	VK_CHECK(vkAllocateCommandBuffers(device, &immediateCommandBufferAllocateInfo, &immediateSubmitCommandBuffer), "Couldn't allocate immediate command buffer");
+	mainDeletionQueue.PushFunction([&] { vkDestroyCommandPool(device, immediateSubmitCommandPool, nullptr); });
+
 	return SDL_APP_CONTINUE;
 }
 
@@ -166,6 +177,9 @@ SDL_AppResult VulkanEngine::InitSyncStructures() {
 	for (size_t i = 0; i < swapchainImages.size(); i++) {
 		VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &readyForPresentSemaphores[i]), "Couldn't create semaphore");
 	}
+
+	VK_CHECK(vkCreateFence(device, &fenceCreateInfo, nullptr, &immediateSubmitFence), "Couldn't create immediate submit fence");
+	mainDeletionQueue.PushFunction([&] { vkDestroyFence(device, immediateSubmitFence, nullptr); });
 
 	return SDL_APP_CONTINUE;
 }
@@ -434,6 +448,99 @@ SDL_AppResult VulkanEngine::InitTrianglePipelines() {
 	return SDL_APP_CONTINUE;
 }
 
+SDL_AppResult VulkanEngine::ImmediateSubmit(std::function<void(VkCommandBuffer commandBuffer)>&& function) const {
+	VK_CHECK(vkResetFences(device, 1, &immediateSubmitFence), "Couldn't reset immediate submit fence");
+	VK_CHECK(vkResetCommandBuffer(immediateSubmitCommandBuffer, 0), "Couldn't reset immediate submit command buffer");
+
+	const VkCommandBuffer& commandBuffer = immediateSubmitCommandBuffer;
+
+	const VkCommandBufferBeginInfo cmdBeginInfo = vk_init::CommandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+	VK_CHECK(vkBeginCommandBuffer(commandBuffer, &cmdBeginInfo), "Couldn't begin immediate command buffer");
+
+	function(commandBuffer);
+
+	VK_CHECK(vkEndCommandBuffer(commandBuffer), "Couldn't end immediate command buffer");
+
+	const VkCommandBufferSubmitInfo commandBufferSubmitInfo = vk_init::CommandBufferSubmitInfo(commandBuffer);
+	const VkSubmitInfo2 submit = vk_init::SubmitInfo(&commandBufferSubmitInfo, nullptr, nullptr);
+
+	VK_CHECK(vkQueueSubmit2(graphicsQueue, 1, &submit, immediateSubmitFence), "Couldn't submit immediate command buffer");
+
+	VK_CHECK(vkWaitForFences(device, 1, &immediateSubmitFence, true, secondInNanoseconds), "Couldn't wait for immediate submit fence");
+
+	return SDL_APP_CONTINUE;
+}
+
+SDL_AppResult VulkanEngine::InitImgui() {
+	// 1: create descriptor pool for IMGUI
+	//  the size of the pool is very oversized, but it's copied from imgui demo
+	//  itself.
+	std::array poolSizes = {
+		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
+		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
+		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000},
+		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000},
+		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000},
+		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000},
+		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000},
+		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000},
+		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000},
+		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000},
+		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000}
+	};
+
+	const VkDescriptorPoolCreateInfo poolCreateInfo = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+		.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+		.maxSets = 1000,
+		.poolSizeCount = poolSizes.size(),
+		.pPoolSizes = poolSizes.data(),
+	};
+
+	VkDescriptorPool imguiPool;
+	VK_CHECK(vkCreateDescriptorPool(device, &poolCreateInfo, nullptr, &imguiPool), "Couldn't create imgui descriptor pool");
+
+	// 2: initialize imgui library
+
+	// this initializes the core structures of imgui
+	ImGui::CreateContext();
+
+	// this initializes imgui for SDL
+	ImGui_ImplSDL3_InitForVulkan(window);
+
+	// this initializes imgui for Vulkan
+	ImGui_ImplVulkan_InitInfo imguiVulkanInitInfo = {
+		.Instance = instance,
+		.PhysicalDevice = physicalDevice,
+		.Device = device,
+		.Queue = graphicsQueue,
+		.DescriptorPool = imguiPool,
+		.MinImageCount = 3,
+		.ImageCount = 3,
+		.MSAASamples = VK_SAMPLE_COUNT_1_BIT,
+		.UseDynamicRendering = true,
+		//dynamic rendering parameters for imgui to use
+		.PipelineRenderingCreateInfo = VkPipelineRenderingCreateInfo{
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+			.colorAttachmentCount = 1,
+			.pColorAttachmentFormats = &swapchainImageFormat,
+		},
+	};
+
+	ImGui_ImplVulkan_Init(&imguiVulkanInitInfo);
+
+	ImGui_ImplVulkan_CreateFontsTexture();
+
+	// destroy the imgui created structures
+	mainDeletionQueue.PushFunction([=, this] {
+		ImGui_ImplVulkan_Shutdown();
+		vkDestroyDescriptorPool(device, imguiPool, nullptr);
+	});
+
+	return SDL_APP_CONTINUE;
+}
+
 #pragma endregion
 
 VulkanEngine::VulkanEngine(std::string name, const bool debugMode)
@@ -479,15 +586,30 @@ SDL_AppResult VulkanEngine::Init(const int width, const int height) {
 		return res;
 	}
 
+	if (const SDL_AppResult res = InitImgui(); res != SDL_APP_CONTINUE) {
+		return res;
+	}
+
 	return SDL_APP_CONTINUE;
 }
 
-void VulkanEngine::DrawBackground(const VkCommandBuffer& commandBuffer, const VkImage& image) const {
+void VulkanEngine::DrawBackground(const VkCommandBuffer& commandBuffer) const {
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, gradientPipeline);
 
 	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, gradientPipelineLayout, 0, 1, &drawImageDescriptors, 0, nullptr);
 
 	vkCmdDispatch(commandBuffer, std::ceil(drawExtent.width / 16.0), std::ceil(drawExtent.height / 16.0), 1);
+}
+
+void VulkanEngine::DrawImGui(const VkCommandBuffer& commandBuffer, const VkImageView& targetImageView) const {
+	const VkRenderingAttachmentInfo colorAttachment = vk_init::AttachmentInfo(targetImageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	const VkRenderingInfo renderingInfo = vk_init::RenderingInfo(swapchainExtent, &colorAttachment, nullptr);
+
+	vkCmdBeginRendering(commandBuffer, &renderingInfo);
+
+	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
+
+	vkCmdEndRendering(commandBuffer);
 }
 
 void VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) const {
@@ -532,8 +654,6 @@ void VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) const {
 
 
 SDL_AppResult VulkanEngine::Draw() {
-	constexpr uint64_t secondInNanoseconds = 1'000'000'000;
-
 	VK_CHECK(vkWaitForFences(device, 1, &GetCurrentFrame().renderFence, true, secondInNanoseconds), "Couldn't wait for fence");
 
 	GetCurrentFrame().frameDeletionQueue.Flush();
@@ -558,21 +678,27 @@ SDL_AppResult VulkanEngine::Draw() {
 	// we will overwrite it all so we don't care about what was the older layout
 	vk_util::TransitionImage(commandBuffer, drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
-	DrawBackground(commandBuffer, drawImage.image);
+	DrawBackground(commandBuffer);
 
 	vk_util::TransitionImage(commandBuffer, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 	DrawGeometry(commandBuffer);
 
-	//transition the draw image and the swapchain image into their correct transfer layouts
+	// transition the draw image and the swapchain image into their correct transfer layouts
 	vk_util::TransitionImage(commandBuffer, drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 	vk_util::TransitionImage(commandBuffer, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 	// execute a copy from the draw image into the swapchain
 	vk_util::CopyImageToImage(commandBuffer, drawImage.image, swapchainImages[swapchainImageIndex], drawExtent, swapchainExtent);
 
+	// set swapchain image layout to Attachment Optimal so we can draw into it from imgui
+	vk_util::TransitionImage(commandBuffer, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
+
+	// draw imgui into the swapchain image
+	DrawImGui(commandBuffer, swapchainImageViews[swapchainImageIndex]);
+
 	// set swapchain image layout to Present so we can show it on the screen
-	vk_util::TransitionImage(commandBuffer, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+	vk_util::TransitionImage(commandBuffer, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
 	//finalize the command buffer (we can no longer add commands, but it can now be executed)
 	VK_CHECK(vkEndCommandBuffer(commandBuffer), "Couldn't end command buffer");

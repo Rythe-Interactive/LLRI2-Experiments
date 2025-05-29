@@ -35,6 +35,8 @@ class VulkanEngine {
 	std::vector<VkSemaphore> readyForPresentSemaphores;
 	VkExtent2D swapchainExtent = {};
 
+	static constexpr uint64_t secondInNanoseconds = 1'000'000'000;
+
 	struct FrameData {
 		VkCommandPool commandPool = nullptr;
 		VkCommandBuffer mainCommandBuffer = nullptr;
@@ -72,6 +74,11 @@ class VulkanEngine {
 	VkPipeline trianglePipeline = nullptr;
 	VkPipelineLayout trianglePipelineLayout = nullptr;
 
+	//Immediate Submit
+	VkFence immediateSubmitFence = nullptr;
+	VkCommandBuffer immediateSubmitCommandBuffer = nullptr;
+	VkCommandPool immediateSubmitCommandPool = nullptr;
+
 private:
 	SDL_AppResult InitVulkan();
 	SDL_AppResult InitCommands();
@@ -91,7 +98,11 @@ private:
 	SDL_AppResult InitTrianglePipelines();
 
 private:
-	void DrawBackground(const VkCommandBuffer& commandBuffer, const VkImage& image) const;
+	SDL_AppResult InitImgui();
+
+private:
+	void DrawBackground(const VkCommandBuffer& commandBuffer) const;
+	void DrawImGui(const VkCommandBuffer& commandBuffer, const VkImageView& targetImageView) const;
 	void DrawGeometry(const VkCommandBuffer& commandBuffer) const;
 
 public:
@@ -102,4 +113,7 @@ public:
 	SDL_AppResult Init(int width, int height);
 	SDL_AppResult Draw();
 	void Cleanup(SDL_AppResult result);
+
+public:
+	SDL_AppResult ImmediateSubmit(std::function<void(VkCommandBuffer commandBuffer)>&& function) const;
 };
