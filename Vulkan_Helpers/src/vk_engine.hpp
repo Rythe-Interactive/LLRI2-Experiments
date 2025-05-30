@@ -16,6 +16,7 @@
 // Engine
 #include "vk_custom_types.hpp"
 #include "vk_descriptors.hpp"
+#include "rsl/math"
 
 class VulkanEngine {
 	const std::string name;
@@ -78,6 +79,14 @@ class VulkanEngine {
 	VkFence immediateSubmitFence = nullptr;
 	VkCommandBuffer immediateSubmitCommandBuffer = nullptr;
 	VkCommandPool immediateSubmitCommandPool = nullptr;
+
+	//Push Constants
+	struct ComputePushConstants {
+		math::float4 data1;
+		math::float4 data2;
+		math::float4 data3;
+		math::float4 data4;
+	};
 
 private:
 	SDL_AppResult InitVulkan();

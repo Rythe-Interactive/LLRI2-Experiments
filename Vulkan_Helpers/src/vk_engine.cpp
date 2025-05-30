@@ -343,15 +343,23 @@ SDL_AppResult VulkanEngine::InitPipelines() {
 }
 
 SDL_AppResult VulkanEngine::InitBackgroundPipelines() {
+	VkPushConstantRange pushConstantRange{
+		.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+		.offset = 0,
+		.size = sizeof(ComputePushConstants),
+	};
+
 	const VkPipelineLayoutCreateInfo computeLayout{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 		.setLayoutCount = 1,
 		.pSetLayouts = &drawImageDescriptorLayout,
+		.pushConstantRangeCount = 1,
+		.pPushConstantRanges = &pushConstantRange,
 	};
 
 	VK_CHECK(vkCreatePipelineLayout(device, &computeLayout, nullptr, &gradientPipelineLayout), "Couldn't create pipeline layout");
 
-	const std::filesystem::path fullPath = GetAssetsDir() / "shaders/compiled/" / "gradient.comp.spv";
+	const std::filesystem::path fullPath = GetAssetsDir() / "shaders/compiled/" / "gradient_colour.comp.spv";
 
 	const std::optional<VkShaderModule> computeDrawShaderResult = vk_util::LoadShaderModule(fullPath.string().c_str(), device);
 	if (!computeDrawShaderResult.has_value()) {
@@ -597,6 +605,12 @@ void VulkanEngine::DrawBackground(const VkCommandBuffer& commandBuffer) const {
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, gradientPipeline);
 
 	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, gradientPipelineLayout, 0, 1, &drawImageDescriptors, 0, nullptr);
+
+	ComputePushConstants pushConstants;
+	pushConstants.data1 = math::float4{1.0f, 0.0f, 0.0f, 1.0f};
+	pushConstants.data2 = math::float4{0.0f, 0.0f, 1.0f, 1.0f};
+
+	vkCmdPushConstants(commandBuffer, gradientPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &pushConstants);
 
 	vkCmdDispatch(commandBuffer, std::ceil(drawExtent.width / 16.0), std::ceil(drawExtent.height / 16.0), 1);
 }
