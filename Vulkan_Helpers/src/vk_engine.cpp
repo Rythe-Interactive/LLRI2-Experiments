@@ -616,8 +616,8 @@ void VulkanEngine::DrawBackground(const VkCommandBuffer& commandBuffer) const {
 }
 
 void VulkanEngine::DrawImGui(const VkCommandBuffer& commandBuffer, const VkImageView& targetImageView) const {
-	const VkRenderingAttachmentInfo colorAttachment = vk_init::AttachmentInfo(targetImageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-	const VkRenderingInfo renderingInfo = vk_init::RenderingInfo(swapchainExtent, &colorAttachment, nullptr);
+	const VkRenderingAttachmentInfo colourAttachment = vk_init::AttachmentInfo(targetImageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	const VkRenderingInfo renderingInfo = vk_init::RenderingInfo(swapchainExtent, &colourAttachment, nullptr);
 
 	vkCmdBeginRendering(commandBuffer, &renderingInfo);
 
