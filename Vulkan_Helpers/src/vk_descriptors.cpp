@@ -3,13 +3,13 @@
 #include "vk_macros.hpp"
 
 void DescriptorLayoutBuilder::AddBinding(const uint32_t binding, const VkDescriptorType type) {
-	const VkDescriptorSetLayoutBinding newBinding{
+	const VkDescriptorSetLayoutBinding descriptorSetLayoutBinding{
 		.binding = binding,
 		.descriptorType = type,
 		.descriptorCount = 1,
 	};
 
-	bindings.push_back(newBinding);
+	bindings.push_back(descriptorSetLayoutBinding);
 }
 
 void DescriptorLayoutBuilder::Clear() {
@@ -21,7 +21,7 @@ std::optional<VkDescriptorSetLayout> DescriptorLayoutBuilder::Build(const VkDevi
 		b.stageFlags |= shaderStages;
 	}
 
-	const VkDescriptorSetLayoutCreateInfo info = {
+	const VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 		.pNext = pNext,
 		.flags = flags,
@@ -30,7 +30,7 @@ std::optional<VkDescriptorSetLayout> DescriptorLayoutBuilder::Build(const VkDevi
 	};
 
 	VkDescriptorSetLayout set;
-	VK_CHECK_EMPTY_OPTIONAL(vkCreateDescriptorSetLayout(device, &info, nullptr, &set), "Couldn't create descriptor set layout");
+	VK_CHECK_EMPTY_OPTIONAL(vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCreateInfo, nullptr, &set), "Couldn't create descriptor set layout");
 
 	return set;
 }
@@ -44,7 +44,7 @@ void DescriptorAllocator::InitPool(const VkDevice& device, const uint32_t maxSet
 		});
 	}
 
-	VkDescriptorPoolCreateInfo pool_info = {
+	const VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 		.flags = 0,
 		.maxSets = maxSets,
@@ -52,7 +52,7 @@ void DescriptorAllocator::InitPool(const VkDevice& device, const uint32_t maxSet
 		.pPoolSizes = poolSizes.data(),
 	};
 
-	vkCreateDescriptorPool(device, &pool_info, nullptr, &pool);
+	vkCreateDescriptorPool(device, &descriptorPoolCreateInfo, nullptr, &pool);
 }
 
 void DescriptorAllocator::ClearDescriptors(const VkDevice& device) const {
@@ -64,7 +64,7 @@ void DescriptorAllocator::DestroyPool(const VkDevice& device) const {
 }
 
 std::optional<VkDescriptorSet> DescriptorAllocator::Allocate(const VkDevice& device, VkDescriptorSetLayout layout) const {
-	const VkDescriptorSetAllocateInfo allocInfo = {
+	const VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 		.descriptorPool = pool,
 		.descriptorSetCount = 1,
@@ -72,7 +72,7 @@ std::optional<VkDescriptorSet> DescriptorAllocator::Allocate(const VkDevice& dev
 	};
 
 	VkDescriptorSet ds;
-	VK_CHECK_EMPTY_OPTIONAL(vkAllocateDescriptorSets(device, &allocInfo, &ds), "Couldn't allocate descriptor set");
+	VK_CHECK_EMPTY_OPTIONAL(vkAllocateDescriptorSets(device, &descriptorSetAllocateInfo, &ds), "Couldn't allocate descriptor set");
 
 	return ds;
 }
