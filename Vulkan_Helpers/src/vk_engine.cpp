@@ -357,38 +357,83 @@ SDL_AppResult VulkanEngine::InitBackgroundPipelines() {
 		.pPushConstantRanges = &pushConstantRange,
 	};
 
-	VK_CHECK(vkCreatePipelineLayout(device, &computeLayout, nullptr, &gradientPipelineLayout), "Couldn't create pipeline layout");
+	VkPipelineLayout computePipelineLayout;
+	VK_CHECK(vkCreatePipelineLayout(device, &computeLayout, nullptr, &computePipelineLayout), "Couldn't create pipeline layout");
 
-	const std::filesystem::path fullPath = GetAssetsDir() / "shaders/compiled/" / "gradient_colour.comp.spv";
+	const std::filesystem::path compiledShadersPath = GetAssetsDir() / "shaders/compiled/";
 
-	const std::optional<VkShaderModule> computeDrawShaderResult = vk_util::LoadShaderModule(fullPath.string().c_str(), device);
-	if (!computeDrawShaderResult.has_value()) {
-		SDL_Log("Couldn't load compute shader module");
-		return SDL_APP_FAILURE;
+	VkShaderModule gradientShader;
+	{
+		const std::filesystem::path gradientShaderPath = compiledShadersPath / "gradient_colour.comp.spv";
+		const std::optional<VkShaderModule> gradientShaderResult = vk_util::LoadShaderModule(gradientShaderPath.string().c_str(), device);
+		if (!gradientShaderResult.has_value()) {
+			SDL_Log("Couldn't load compute shader module: %s", gradientShaderPath.string().c_str());
+			return SDL_APP_FAILURE;
+		}
+		gradientShader = gradientShaderResult.value();
 	}
-	const VkShaderModule& computeDrawShader = computeDrawShaderResult.value();
+	VkShaderModule skyShader;
+	{
+		const std::filesystem::path skyShaderPath = compiledShadersPath / "sky.comp.spv";
+		const std::optional<VkShaderModule> skyShaderResult = vk_util::LoadShaderModule(skyShaderPath.string().c_str(), device);
+		if (!skyShaderResult.has_value()) {
+			SDL_Log("Couldn't load compute shader module: %s", skyShaderPath.string().c_str());
+			return SDL_APP_FAILURE;
+		}
+		skyShader = skyShaderResult.value();
+	}
 
 	const VkPipelineShaderStageCreateInfo stageCreateInfo{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.module = computeDrawShader,
+		.module = gradientShader,
 		.pName = "main",
 	};
 
-	const VkComputePipelineCreateInfo computePipelineCreateInfo{
+	VkComputePipelineCreateInfo computePipelineCreateInfo{
 		.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
 		.pNext = nullptr,
 		.stage = stageCreateInfo,
-		.layout = gradientPipelineLayout,
+		.layout = computePipelineLayout,
 	};
 
-	VK_CHECK(vkCreateComputePipelines(device,VK_NULL_HANDLE,1,&computePipelineCreateInfo, nullptr, &gradientPipeline), "Couldn't create compute pipeline");
+	ComputeEffect gradientEffect{
+		.name = "gradient",
+		.layout = computePipelineLayout,
+		.data = ComputePushConstants{
+			//default colours
+			.data1 = math::float4{1.0f, 0.0f, 0.0f, 1.0f}, // Red
+			.data2 = math::float4{0.0f, 0.0f, 1.0f, 1.0f}, // Blue
+		}
+	};
 
-	vkDestroyShaderModule(device, computeDrawShader, nullptr);
+	VK_CHECK(vkCreateComputePipelines(device, nullptr, 1, &computePipelineCreateInfo, nullptr, &gradientEffect.pipeline), "Couldn't create compute pipeline: gradient");
 
-	mainDeletionQueue.PushFunction([&] {
-		vkDestroyPipelineLayout(device, gradientPipelineLayout, nullptr);
-		vkDestroyPipeline(device, gradientPipeline, nullptr);
+	//reuse the structs we've already made, but with the other shader
+	computePipelineCreateInfo.stage.module = skyShader;
+
+	ComputeEffect skyEffect{
+		.name = "sky",
+		.layout = computePipelineLayout,
+		.data = ComputePushConstants{
+			//default colours
+			.data1 = math::float4{0.1f, 0.2f, 0.4f, 0.97f}, // Light blue
+		}
+	};
+	VK_CHECK(vkCreateComputePipelines(device, nullptr, 1, &computePipelineCreateInfo, nullptr, &skyEffect.pipeline), "Couldn't create compute pipeline: sky");
+
+	//add the effects to the background effects vector
+	backgroundEffects.push_back(gradientEffect);
+	backgroundEffects.push_back(skyEffect);
+
+	//destroy the shader modules we created
+	vkDestroyShaderModule(device, gradientShader, nullptr);
+	vkDestroyShaderModule(device, skyShader, nullptr);
+
+	mainDeletionQueue.PushFunction([=, this] {
+		vkDestroyPipelineLayout(device, computePipelineLayout, nullptr);
+		vkDestroyPipeline(device, skyEffect.pipeline, nullptr);
+		vkDestroyPipeline(device, gradientEffect.pipeline, nullptr);
 	});
 
 	return SDL_APP_CONTINUE;
@@ -602,15 +647,13 @@ SDL_AppResult VulkanEngine::Init(const int width, const int height) {
 }
 
 void VulkanEngine::DrawBackground(const VkCommandBuffer& commandBuffer) const {
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, gradientPipeline);
+	const ComputeEffect& currentEffect = backgroundEffects[currentBackgroundEffectIndex];
 
-	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, gradientPipelineLayout, 0, 1, &drawImageDescriptors, 0, nullptr);
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, currentEffect.pipeline);
 
-	ComputePushConstants pushConstants;
-	pushConstants.data1 = math::float4{1.0f, 0.0f, 0.0f, 1.0f};
-	pushConstants.data2 = math::float4{0.0f, 0.0f, 1.0f, 1.0f};
+	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, currentEffect.layout, 0, 1, &drawImageDescriptors, 0, nullptr);
 
-	vkCmdPushConstants(commandBuffer, gradientPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &pushConstants);
+	vkCmdPushConstants(commandBuffer, currentEffect.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &currentEffect.data);
 
 	vkCmdDispatch(commandBuffer, std::ceil(drawExtent.width / 16.0), std::ceil(drawExtent.height / 16.0), 1);
 }
@@ -666,8 +709,28 @@ void VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) const {
 	vkCmdEndRendering(commandBuffer);
 }
 
-
 SDL_AppResult VulkanEngine::Draw() {
+	ImGui_ImplVulkan_NewFrame();
+	ImGui_ImplSDL3_NewFrame();
+	ImGui::NewFrame();
+
+	ImGui::ShowDemoWindow();
+
+	if (ImGui::Begin("Background")) {
+		const ComputeEffect& currentEffect = backgroundEffects[currentBackgroundEffectIndex];
+
+		ImGui::Text("Selected effect: ", currentEffect.name);
+		ImGui::SliderInt("Effect Index", &currentBackgroundEffectIndex, 0, static_cast<int>(backgroundEffects.size() - 1));
+
+		ImGui::InputFloat4("data1", const_cast<float*>(&currentEffect.data.data1.x));
+		ImGui::InputFloat4("data2", const_cast<float*>(&currentEffect.data.data2.x));
+		ImGui::InputFloat4("data3", const_cast<float*>(&currentEffect.data.data3.x));
+		ImGui::InputFloat4("data4", const_cast<float*>(&currentEffect.data.data4.x));
+	}
+	ImGui::End();
+
+	ImGui::Render();
+
 	VK_CHECK(vkWaitForFences(device, 1, &GetCurrentFrame().renderFence, true, secondInNanoseconds), "Couldn't wait for fence");
 
 	GetCurrentFrame().frameDeletionQueue.Flush();

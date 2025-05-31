@@ -69,9 +69,6 @@ class VulkanEngine {
 	VkDescriptorSet drawImageDescriptors = nullptr;
 	VkDescriptorSetLayout drawImageDescriptorLayout = nullptr;
 
-	VkPipeline gradientPipeline = nullptr;
-	VkPipelineLayout gradientPipelineLayout = nullptr;
-
 	VkPipeline trianglePipeline = nullptr;
 	VkPipelineLayout trianglePipelineLayout = nullptr;
 
@@ -80,13 +77,23 @@ class VulkanEngine {
 	VkCommandBuffer immediateSubmitCommandBuffer = nullptr;
 	VkCommandPool immediateSubmitCommandPool = nullptr;
 
-	//Push Constants
+	//Push Constants for the Compute Background
 	struct ComputePushConstants {
 		math::float4 data1;
 		math::float4 data2;
 		math::float4 data3;
 		math::float4 data4;
 	};
+
+	struct ComputeEffect {
+		const char* name{};
+		VkPipeline pipeline{};
+		VkPipelineLayout layout{};
+		ComputePushConstants data;
+	};
+
+	std::vector<ComputeEffect> backgroundEffects;
+	int currentBackgroundEffectIndex = 0;
 
 private:
 	SDL_AppResult InitVulkan();
