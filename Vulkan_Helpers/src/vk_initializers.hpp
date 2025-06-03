@@ -1,5 +1,9 @@
 #pragma once
 
+// C++
+#include <span>
+
+// Vulkan Helper Libraries
 #include <volk.h>
 
 namespace vk_init {
@@ -33,6 +37,7 @@ namespace vk_init {
 
 	VkImageCreateInfo ImageCreateInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent);
 	VkImageViewCreateInfo ImageViewCreateInfo(VkFormat format, const VkImage& image, VkImageAspectFlags aspectFlags);
-	VkPipelineLayoutCreateInfo PipelineLayoutCreateInfo();
+	VkPipelineLayoutCreateInfo PipelineLayoutCreateInfo(std::span<VkPushConstantRange> pushConstantRanges = {}, std::span<VkDescriptorSetLayout> setLayouts = {});
+	VkPipelineLayoutCreateInfo PipelineLayoutCreateInfo(const VkPushConstantRange* pushConstantRange = nullptr, const VkDescriptorSetLayout* setLayout = nullptr);
 	VkPipelineShaderStageCreateInfo PipelineShaderStageCreateInfo(VkShaderStageFlagBits stage, const VkShaderModule& shaderModule, const char* entry = "main");
 };

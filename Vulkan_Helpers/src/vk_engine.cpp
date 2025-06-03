@@ -335,7 +335,7 @@ SDL_AppResult VulkanEngine::InitPipelines() {
 	if (const SDL_AppResult res = InitBackgroundPipelines(); res != SDL_APP_CONTINUE) {
 		return res;
 	}
-	if (const SDL_AppResult res = InitTrianglePipelines(); res != SDL_APP_CONTINUE) {
+	if (const SDL_AppResult res = InitMeshPipeline(); res != SDL_APP_CONTINUE) {
 		return res;
 	}
 
@@ -439,37 +439,41 @@ SDL_AppResult VulkanEngine::InitBackgroundPipelines() {
 	return SDL_APP_CONTINUE;
 }
 
-SDL_AppResult VulkanEngine::InitTrianglePipelines() {
-	VkShaderModule triangleFragShader;
+SDL_AppResult VulkanEngine::InitMeshPipeline() {
+	VkShaderModule meshFragShader;
 	{
 		const std::filesystem::path fullPath = GetAssetsDir() / "shaders/compiled/" / "triangle.frag.spv";
-		if (const std::optional<VkShaderModule> triangleFragShaderResult = vk_util::LoadShaderModule(fullPath.string().c_str(), device); !triangleFragShaderResult.has_value()) {
-			SDL_Log("Couldn't load triangle fragment shader module");
+		if (const std::optional<VkShaderModule> meshFragShaderResult = vk_util::LoadShaderModule(fullPath.string().c_str(), device); !meshFragShaderResult.has_value()) {
+			SDL_Log("Couldn't load mesh fragment shader module");
 			return SDL_APP_FAILURE;
 		} else {
-			triangleFragShader = triangleFragShaderResult.value();
+			meshFragShader = meshFragShaderResult.value();
 		}
 	}
 
-	VkShaderModule triangleVertShader;
+	VkShaderModule meshVertShader;
 	{
 		const std::filesystem::path fullPath = GetAssetsDir() / "shaders/compiled/" / "triangle.vert.spv";
-		if (const std::optional<VkShaderModule> triangleVertShaderResult = vk_util::LoadShaderModule(fullPath.string().c_str(), device); !triangleVertShaderResult.has_value()) {
-			SDL_Log("Couldn't load triangle vertex shader module");
+		if (const std::optional<VkShaderModule> meshVertShaderResult = vk_util::LoadShaderModule(fullPath.string().c_str(), device); !meshVertShaderResult.has_value()) {
+			SDL_Log("Couldn't load mesh vertex shader module");
 			return SDL_APP_FAILURE;
 		} else {
-			triangleVertShader = triangleVertShaderResult.value();
+			meshVertShader = meshVertShaderResult.value();
 		}
 	}
 
-	//we are not using descriptor sets or other systems yet, so no need to use anything other than empty default
-	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = vk_init::PipelineLayoutCreateInfo();
-	VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, nullptr, &trianglePipelineLayout), "Couldn't create triangle pipeline layout");
-	PipelineBuilder pipelineBuilder;
+	VkPushConstantRange bufferRange{
+		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+		.offset = 0,
+		.size = sizeof(GPUDrawPushConstants),
+	};
 
-	//use the triangle layout we created
-	pipelineBuilder.pipelineLayout = trianglePipelineLayout;
-	pipelineBuilder.SetShaders(triangleVertShader, triangleFragShader);
+	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = vk_init::PipelineLayoutCreateInfo(&bufferRange);
+	VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, nullptr, &meshPipelineLayout), "Couldn't create mesh pipeline layout");
+
+	PipelineBuilder pipelineBuilder;
+	pipelineBuilder.pipelineLayout = meshPipelineLayout;
+	pipelineBuilder.SetShaders(meshVertShader, meshFragShader);
 	pipelineBuilder.SetInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 	pipelineBuilder.SetPolygonMode(VK_POLYGON_MODE_FILL);
 	pipelineBuilder.SetCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
@@ -484,18 +488,18 @@ SDL_AppResult VulkanEngine::InitTrianglePipelines() {
 	//finally build the pipeline
 	const std::optional<VkPipeline> pipelineResult = pipelineBuilder.BuildPipeline(device);
 	if (!pipelineResult.has_value()) {
-		SDL_Log("Couldn't build triangle pipeline");
+		SDL_Log("Couldn't build mesh pipeline");
 		return SDL_APP_FAILURE;
 	}
-	trianglePipeline = pipelineResult.value();
+	meshPipeline = pipelineResult.value();
 
 	//clean structures
-	vkDestroyShaderModule(device, triangleFragShader, nullptr);
-	vkDestroyShaderModule(device, triangleVertShader, nullptr);
+	vkDestroyShaderModule(device, meshFragShader, nullptr);
+	vkDestroyShaderModule(device, meshVertShader, nullptr);
 
 	mainDeletionQueue.PushFunction([&] {
-		vkDestroyPipelineLayout(device, trianglePipelineLayout, nullptr);
-		vkDestroyPipeline(device, trianglePipeline, nullptr);
+		vkDestroyPipelineLayout(device, meshPipelineLayout, nullptr);
+		vkDestroyPipeline(device, meshPipeline, nullptr);
 	});
 
 	return SDL_APP_CONTINUE;
@@ -594,6 +598,132 @@ SDL_AppResult VulkanEngine::InitImgui() {
 	return SDL_APP_CONTINUE;
 }
 
+SDL_AppResult VulkanEngine::InitDefaultData() {
+	std::array rectVertices{
+		MyVertex{
+			.pos = {0.5, -0.5, 0}, //topright
+			.colour = {1, 1, 0, 1},
+		},
+		MyVertex{
+			.pos = {0.5, 0.5, 0}, //bottomright
+			.colour = {1, 0, 0, 1},
+		},
+		MyVertex{
+			.pos = {-0.5, -0.5, 0}, //topleft
+			.colour = {0, 1, 0, 1},
+		},
+		MyVertex{
+			.pos = {-0.5, 0.5, 0}, //bottomleft
+			.colour = {0, 0, 0, 1},
+		}
+	};
+
+	std::array rectIndices{
+		0u, 1u, 2u,
+		2u, 1u, 3u
+	};
+
+	std::optional<GPUMeshBuffers> meshUploadResult = UploadMesh(rectIndices, rectVertices);
+	if (!meshUploadResult.has_value()) {
+		SDL_Log("Failed to upload rectangle mesh");
+		return SDL_APP_FAILURE;
+	}
+	myRectangleMesh = std::move(meshUploadResult.value());
+
+	mainDeletionQueue.PushFunction([&] {
+		DestroyBuffer(myRectangleMesh.indexBuffer);
+		DestroyBuffer(myRectangleMesh.vertexBuffer);
+	});
+
+	return SDL_APP_CONTINUE;
+}
+
+std::optional<AllocatedBuffer> VulkanEngine::CreateBuffer(const size_t allocSize, const VkBufferUsageFlags bufferUsage, const VmaMemoryUsage memoryUsage) const {
+	const VkBufferCreateInfo bufferInfo = {
+		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+		.size = allocSize,
+		.usage = bufferUsage,
+	};
+
+	const VmaAllocationCreateInfo vmaAllocInfo = {
+		.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
+		.usage = memoryUsage,
+	};
+
+	AllocatedBuffer newBuffer{};
+	VK_CHECK_EMPTY_OPTIONAL(vmaCreateBuffer(vmaAllocator, &bufferInfo, &vmaAllocInfo, &newBuffer.internalBuffer, &newBuffer.allocation, &newBuffer.allocationInfo), "Failed to create buffer");
+
+	return newBuffer;
+}
+
+void VulkanEngine::DestroyBuffer(const AllocatedBuffer& buffer) const {
+	vmaDestroyBuffer(vmaAllocator, buffer.internalBuffer, buffer.allocation);
+}
+
+std::optional<GPUMeshBuffers> VulkanEngine::UploadMesh(std::span<uint32_t> indices, std::span<MyVertex> vertices) const {
+	const size_t vertexBufferSize = vertices.size() * sizeof(MyVertex);
+	const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
+
+	//create vertex buffer
+	std::optional<AllocatedBuffer> vertexBufferResult = CreateBuffer(vertexBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+	if (!vertexBufferResult.has_value()) {
+		SDL_Log("Failed to create vertex buffer");
+		return std::nullopt;
+	}
+	AllocatedBuffer vertexBuffer = std::move(vertexBufferResult.value());
+
+	std::optional<AllocatedBuffer> indexBufferResult = CreateBuffer(indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+	if (!indexBufferResult.has_value()) {
+		SDL_Log("Failed to create index buffer");
+		return std::nullopt;
+	}
+	AllocatedBuffer indexBuffer = std::move(indexBufferResult.value());
+
+	const VkBufferDeviceAddressInfo bufferDeviceAddressInfo{
+		.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+		.buffer = vertexBuffer.internalBuffer,
+	};
+
+	GPUMeshBuffers newSurface{
+		.vertexBuffer = vertexBuffer,
+		.indexBuffer = indexBuffer,
+		//find the address of the vertex buffer
+		.vertexBufferAddress = vkGetBufferDeviceAddress(device, &bufferDeviceAddressInfo),
+	};
+
+	std::optional<AllocatedBuffer> stagingResult = CreateBuffer(vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+	if (!stagingResult.has_value()) {
+		SDL_Log("Failed to create staging buffer");
+		return std::nullopt;
+	}
+	AllocatedBuffer stagingBuffer = std::move(stagingResult.value());
+
+	void* data = stagingBuffer.allocation->GetMappedData();
+
+	memcpy(data, vertices.data(), vertexBufferSize); // copy vertex buffer
+	memcpy(static_cast<char*>(data) + vertexBufferSize, indices.data(), indexBufferSize); // copy index buffer
+
+	ImmediateSubmit([&](const VkCommandBuffer& commandBuffer) {
+		const VkBufferCopy vertexCopy{
+			.srcOffset = 0,
+			.dstOffset = 0,
+			.size = vertexBufferSize
+		};
+		vkCmdCopyBuffer(commandBuffer, stagingBuffer.internalBuffer, newSurface.vertexBuffer.internalBuffer, 1, &vertexCopy);
+
+		const VkBufferCopy indexCopy{
+			.srcOffset = vertexBufferSize,
+			.dstOffset = 0,
+			.size = indexBufferSize
+		};
+		vkCmdCopyBuffer(commandBuffer, stagingBuffer.internalBuffer, newSurface.indexBuffer.internalBuffer, 1, &indexCopy);
+	});
+
+	DestroyBuffer(stagingBuffer);
+
+	return newSurface;
+}
+
 #pragma endregion
 
 VulkanEngine::VulkanEngine(std::string name, const bool debugMode)
@@ -643,6 +773,10 @@ SDL_AppResult VulkanEngine::Init(const int width, const int height) {
 		return res;
 	}
 
+	if (const SDL_AppResult res = InitDefaultData(); res != SDL_APP_CONTINUE) {
+		return res;
+	}
+
 	return SDL_APP_CONTINUE;
 }
 
@@ -676,8 +810,6 @@ void VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) const {
 	const VkRenderingInfo renderInfo = vk_init::RenderingInfo(drawExtent, &colorAttachment, nullptr);
 	vkCmdBeginRendering(commandBuffer, &renderInfo);
 
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, trianglePipeline);
-
 	//set dynamic viewport and scissor
 	const VkViewport viewport{
 		.x = 0,
@@ -703,8 +835,19 @@ void VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) const {
 
 	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-	//launch a draw command to draw 3 vertices
-	vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline);
+
+	GPUDrawPushConstants pushConstants{
+		.worldMatrix = math::float4x4(1.0f),
+		.vertexBufferAddress = myRectangleMesh.vertexBufferAddress,
+	};
+
+	vkCmdPushConstants(commandBuffer, meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
+	vkCmdBindIndexBuffer(commandBuffer, myRectangleMesh.indexBuffer.internalBuffer, 0, VK_INDEX_TYPE_UINT32);
+
+	vkCmdDrawIndexed(commandBuffer, 6, 1, 0, 0, 0);
+
 
 	vkCmdEndRendering(commandBuffer);
 }

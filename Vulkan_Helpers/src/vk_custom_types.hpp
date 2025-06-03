@@ -8,6 +8,9 @@
 // Vulkan Helper Libraries
 #include <vk_mem_alloc.h>
 
+// RSL
+#include <rsl/math>
+
 struct DeletionQueue {
 	std::deque<std::function<void()>> deleters;
 
@@ -31,4 +34,29 @@ struct AllocatedImage {
 	VmaAllocation allocation;
 	VkExtent3D imageExtent;
 	VkFormat imageFormat;
+};
+
+struct AllocatedBuffer {
+	VkBuffer internalBuffer;
+	VmaAllocation allocation;
+	VmaAllocationInfo allocationInfo;
+};
+
+struct MyVertex {
+	math::float3 pos;
+	math::float1 uvX; //spread out to keep the struct small
+	math::float3 normal;
+	math::float1 uvY; //spread out to keep the struct small
+	math::float4 colour;
+};
+
+struct GPUMeshBuffers {
+	AllocatedBuffer vertexBuffer;
+	AllocatedBuffer indexBuffer;
+	VkDeviceAddress vertexBufferAddress;
+};
+
+struct GPUDrawPushConstants {
+	math::float4x4 worldMatrix;
+	VkDeviceAddress vertexBufferAddress;
 };

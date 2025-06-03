@@ -69,8 +69,10 @@ class VulkanEngine {
 	VkDescriptorSet drawImageDescriptors = nullptr;
 	VkDescriptorSetLayout drawImageDescriptorLayout = nullptr;
 
-	VkPipeline trianglePipeline = nullptr;
-	VkPipelineLayout trianglePipelineLayout = nullptr;
+	VkPipeline meshPipeline = nullptr;
+	VkPipelineLayout meshPipelineLayout = nullptr;
+
+	GPUMeshBuffers myRectangleMesh = {};
 
 	//Immediate Submit
 	VkFence immediateSubmitFence = nullptr;
@@ -111,10 +113,18 @@ private:
 private:
 	SDL_AppResult InitPipelines();
 	SDL_AppResult InitBackgroundPipelines();
-	SDL_AppResult InitTrianglePipelines();
+	SDL_AppResult InitMeshPipeline();
 
 private:
 	SDL_AppResult InitImgui();
+
+private:
+	SDL_AppResult InitDefaultData();
+
+private:
+	[[nodiscard]] std::optional<AllocatedBuffer> CreateBuffer(size_t allocSize, VkBufferUsageFlags bufferUsage, VmaMemoryUsage memoryUsage) const;
+	void DestroyBuffer(const AllocatedBuffer& buffer) const;
+	std::optional<GPUMeshBuffers> UploadMesh(std::span<uint32_t> indices, std::span<MyVertex> vertices) const;
 
 private:
 	void DrawBackground(const VkCommandBuffer& commandBuffer) const;

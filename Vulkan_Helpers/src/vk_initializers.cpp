@@ -206,14 +206,25 @@ VkImageViewCreateInfo vk_init::ImageViewCreateInfo(const VkFormat format, const 
 	};
 }
 
-VkPipelineLayoutCreateInfo vk_init::PipelineLayoutCreateInfo() {
+VkPipelineLayoutCreateInfo vk_init::PipelineLayoutCreateInfo(const std::span<VkPushConstantRange> pushConstantRanges, const std::span<VkDescriptorSetLayout> setLayouts) {
 	return VkPipelineLayoutCreateInfo{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 		.flags = 0,
-		.setLayoutCount = 0,
-		.pSetLayouts = nullptr,
-		.pushConstantRangeCount = 0,
-		.pPushConstantRanges = nullptr
+		.setLayoutCount = static_cast<uint32_t>(setLayouts.size()),
+		.pSetLayouts = setLayouts.empty() ? nullptr : setLayouts.data(),
+		.pushConstantRangeCount = static_cast<uint32_t>(pushConstantRanges.size()),
+		.pPushConstantRanges = pushConstantRanges.empty() ? nullptr : pushConstantRanges.data(),
+	};
+}
+
+VkPipelineLayoutCreateInfo vk_init::PipelineLayoutCreateInfo(const VkPushConstantRange* pushConstantRange, const VkDescriptorSetLayout* setLayout) {
+	return VkPipelineLayoutCreateInfo{
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+		.flags = 0,
+		.setLayoutCount = setLayout ? 1u : 0u,
+		.pSetLayouts = setLayout ? setLayout : nullptr,
+		.pushConstantRangeCount = pushConstantRange ? 1u : 0u,
+		.pPushConstantRanges = pushConstantRange ? pushConstantRange : nullptr,
 	};
 }
 
