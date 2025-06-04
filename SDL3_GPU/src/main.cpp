@@ -537,7 +537,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 		constexpr float radius = 10.0f;
 		float camX = sinf(static_cast<float>(SDL_GetTicks()) / 1000.0f) * radius;
 		float camZ = cosf(static_cast<float>(SDL_GetTicks()) / 1000.0f) * radius;
-		math::float3 cameraPos = math::float3(camX, 3.0f, camZ); //BUG: Something is still wonky, here...
+		math::float3 cameraPos = math::float3(camX, 3.0f, camZ);
 		math::float3 cameraTarget = math::float3(0.0f, 0.0f, 0.0f);
 		math::float3 up = math::float3(0.0f, 1.0f, 0.0f);
 		math::float4x4 view = inverse(look_at(cameraPos, cameraTarget, up));
