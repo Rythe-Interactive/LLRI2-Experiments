@@ -623,12 +623,12 @@ SDL_AppResult VulkanEngine::InitDefaultData() {
 		2u, 1u, 3u
 	};
 
-	std::optional<GPUMeshBuffers> meshUploadResult = UploadMesh(rectIndices, rectVertices);
+	const std::optional<GPUMeshBuffers> meshUploadResult = UploadMesh(rectIndices, rectVertices);
 	if (!meshUploadResult.has_value()) {
 		SDL_Log("Failed to upload rectangle mesh");
 		return SDL_APP_FAILURE;
 	}
-	myRectangleMesh = std::move(meshUploadResult.value());
+	myRectangleMesh = meshUploadResult.value();
 
 	mainDeletionQueue.PushFunction([&] {
 		DestroyBuffer(myRectangleMesh.indexBuffer);
@@ -670,14 +670,14 @@ std::optional<GPUMeshBuffers> VulkanEngine::UploadMesh(std::span<uint32_t> indic
 		SDL_Log("Failed to create vertex buffer");
 		return std::nullopt;
 	}
-	AllocatedBuffer vertexBuffer = std::move(vertexBufferResult.value());
+	AllocatedBuffer vertexBuffer = vertexBufferResult.value();
 
 	std::optional<AllocatedBuffer> indexBufferResult = CreateBuffer(indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 	if (!indexBufferResult.has_value()) {
 		SDL_Log("Failed to create index buffer");
 		return std::nullopt;
 	}
-	AllocatedBuffer indexBuffer = std::move(indexBufferResult.value());
+	AllocatedBuffer indexBuffer = indexBufferResult.value();
 
 	const VkBufferDeviceAddressInfo bufferDeviceAddressInfo{
 		.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
@@ -696,7 +696,7 @@ std::optional<GPUMeshBuffers> VulkanEngine::UploadMesh(std::span<uint32_t> indic
 		SDL_Log("Failed to create staging buffer");
 		return std::nullopt;
 	}
-	AllocatedBuffer stagingBuffer = std::move(stagingResult.value());
+	AllocatedBuffer stagingBuffer = stagingResult.value();
 
 	void* data = stagingBuffer.allocation->GetMappedData();
 
@@ -838,7 +838,7 @@ void VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) const {
 
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline);
 
-	GPUDrawPushConstants pushConstants{
+	const GPUDrawPushConstants pushConstants{
 		.worldMatrix = math::float4x4(1.0f),
 		.vertexBufferAddress = myRectangleMesh.vertexBufferAddress,
 	};
