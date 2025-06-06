@@ -30,6 +30,9 @@ std::optional<VkShaderModule> vk_util::LoadShaderModule(const char* filePath, co
 	if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
 		return std::nullopt;
 	}
+
+	SDL_free(contents);
+
 	return shaderModule;
 }
 
