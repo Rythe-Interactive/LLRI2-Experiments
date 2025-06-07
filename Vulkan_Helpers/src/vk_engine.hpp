@@ -1,22 +1,11 @@
 #pragma once
 
-// C++
-#include <filesystem>
-#include <string>
-#include <vector>
-
-// SDL3
-#include <SDL3/SDL.h>
-
-// Vulkan Helper Libraries
-// ReSharper disable once CppUnusedIncludeDirective
-#include <volk.h>
-#include <vk_mem_alloc.h>
+#include "mass_includer.hpp"
 
 // Engine
 #include "vk_custom_types.hpp"
 #include "vk_descriptors.hpp"
-#include "rsl/math"
+#include "vk_loader.hpp"
 
 class VulkanEngine {
 	const std::string name;
@@ -62,6 +51,7 @@ class VulkanEngine {
 
 	//Draw Resources
 	AllocatedImage drawImage = {};
+	AllocatedImage depthImage = {};
 	VkExtent2D drawExtent = {};
 
 	DescriptorAllocator globalDescriptorAllocator = {};
@@ -72,7 +62,7 @@ class VulkanEngine {
 	VkPipeline meshPipeline = nullptr;
 	VkPipelineLayout meshPipelineLayout = nullptr;
 
-	GPUMeshBuffers myRectangleMesh = {};
+	std::vector<std::shared_ptr<MeshAsset>> meshes;
 
 	//Immediate Submit
 	VkFence immediateSubmitFence = nullptr;
@@ -96,6 +86,11 @@ class VulkanEngine {
 
 	std::vector<ComputeEffect> backgroundEffects;
 	int currentBackgroundEffectIndex = 0;
+
+	float cameraRadius = 10.0f;
+	float cameraHeight = 3.0f;
+	float cameraRotationSpeed = 0.001f;
+	float cameraFOV = 45.0f;
 
 private:
 	SDL_AppResult InitVulkan();
@@ -124,7 +119,6 @@ private:
 private:
 	[[nodiscard]] std::optional<AllocatedBuffer> CreateBuffer(size_t allocSize, VkBufferUsageFlags bufferUsage, VmaMemoryUsage memoryUsage) const;
 	void DestroyBuffer(const AllocatedBuffer& buffer) const;
-	std::optional<GPUMeshBuffers> UploadMesh(std::span<uint32_t> indices, std::span<MyVertex> vertices) const;
 
 private:
 	void DrawBackground(const VkCommandBuffer& commandBuffer) const;
@@ -135,6 +129,7 @@ public:
 	VulkanEngine(std::string name, bool debugMode);
 
 	[[nodiscard]] std::filesystem::path GetAssetsDir() const;
+	[[nodiscard]] std::optional<GPUMeshBuffers> UploadMesh(std::span<Uint16> indices, std::span<MyVertex> vertices) const;
 
 	SDL_AppResult Init(int width, int height);
 	SDL_AppResult Draw();

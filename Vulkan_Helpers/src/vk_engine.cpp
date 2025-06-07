@@ -1,26 +1,14 @@
+// Impl
 #include "vk_engine.hpp"
 
-// SDL3
-#include "SDL3/SDL_vulkan.h"
-
-// RSL Math
-#define RSL_DEFAULT_ALIGNED_MATH false
-#include <rsl/math>
-
 // Vulkan Helper Libraries
-#include <VkBootstrap.h>
-#include <volk.h>
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
-
-// Dear ImGui
-#include "imgui.h"
-#include "imgui_impl_sdl3.h"
-#include "imgui_impl_vulkan.h"
 
 // Engine
 #include "vk_images.hpp"
 #include "vk_initializers.hpp"
+#include "vk_loader.hpp"
 #include "vk_macros.hpp"
 #include "vk_pipelines.hpp"
 
@@ -256,10 +244,30 @@ SDL_AppResult VulkanEngine::InitSwapchain() {
 
 	VK_CHECK(vkCreateImageView(device, &drawImageViewCreateInfo, nullptr, &drawImage.imageView), "Couldn't create image view");
 
+	// Depth Image
+	depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
+	depthImage.imageExtent = drawImageExtent;
+
+	VkImageUsageFlags depthImageUsages{};
+	depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+
+	const VkImageCreateInfo depthImageCreateInfo = vk_init::ImageCreateInfo(depthImage.imageFormat, depthImageUsages, drawImageExtent);
+
+	//allocate and create the image
+	VK_CHECK(vmaCreateImage(vmaAllocator, &depthImageCreateInfo, &drawImageAllocationInfo, &depthImage.image, &depthImage.allocation, nullptr), "Couldn't create depth image");
+
+	//build an image-view for the depth image to use for rendering
+	const VkImageViewCreateInfo depthImageViewCreateInfo = vk_init::ImageViewCreateInfo(depthImage.imageFormat, depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+	VK_CHECK(vkCreateImageView(device, &depthImageViewCreateInfo, nullptr, &depthImage.imageView), "Couldn't create depth image view");
+
 	//add to deletion queues
 	mainDeletionQueue.PushFunction([&] {
 		vkDestroyImageView(device, drawImage.imageView, nullptr);
 		vmaDestroyImage(vmaAllocator, drawImage.image, drawImage.allocation);
+
+		vkDestroyImageView(device, depthImage.imageView, nullptr);
+		vmaDestroyImage(vmaAllocator, depthImage.image, depthImage.allocation);
 	});
 
 	return SDL_APP_CONTINUE;
@@ -479,11 +487,12 @@ SDL_AppResult VulkanEngine::InitMeshPipeline() {
 	pipelineBuilder.SetCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
 	pipelineBuilder.SetMultiSamplingNone();
 	pipelineBuilder.DisableBlending();
-	pipelineBuilder.DisableDepthTest();
+	// pipelineBuilder.DisableDepthTest();
+	pipelineBuilder.EnableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
 
 	//connect the image format we will draw into, from draw image
 	pipelineBuilder.SetColourAttachmentFormat(drawImage.imageFormat);
-	pipelineBuilder.SetDepthFormat(VK_FORMAT_UNDEFINED);
+	pipelineBuilder.SetDepthFormat(depthImage.imageFormat);
 
 	//finally build the pipeline
 	const std::optional<VkPipeline> pipelineResult = pipelineBuilder.BuildPipeline(device);
@@ -599,41 +608,14 @@ SDL_AppResult VulkanEngine::InitImgui() {
 }
 
 SDL_AppResult VulkanEngine::InitDefaultData() {
-	std::array rectVertices{
-		MyVertex{
-			.pos = {0.5, -0.5, 0}, //topright
-			.colour = {1, 1, 0, 1},
-		},
-		MyVertex{
-			.pos = {0.5, 0.5, 0}, //bottomright
-			.colour = {1, 0, 0, 1},
-		},
-		MyVertex{
-			.pos = {-0.5, -0.5, 0}, //topleft
-			.colour = {0, 1, 0, 1},
-		},
-		MyVertex{
-			.pos = {-0.5, 0.5, 0}, //bottomleft
-			.colour = {0, 0, 0, 1},
-		}
-	};
-
-	std::array rectIndices{
-		0u, 1u, 2u,
-		2u, 1u, 3u
-	};
-
-	const std::optional<GPUMeshBuffers> meshUploadResult = UploadMesh(rectIndices, rectVertices);
-	if (!meshUploadResult.has_value()) {
-		SDL_Log("Failed to upload rectangle mesh");
+	const std::filesystem::path fullPath = GetAssetsDir() / "models/suzanne/suzanne.obj";
+	// const std::filesystem::path fullPath = GetAssetsDir() / "models/container/blender_quad.obj";
+	std::optional<std::vector<std::shared_ptr<MeshAsset>>> meshResult = ImportMesh(this, fullPath);
+	if (!meshResult.has_value()) {
+		SDL_Log("Couldn't import mesh!");
 		return SDL_APP_FAILURE;
 	}
-	myRectangleMesh = meshUploadResult.value();
-
-	mainDeletionQueue.PushFunction([&] {
-		DestroyBuffer(myRectangleMesh.indexBuffer);
-		DestroyBuffer(myRectangleMesh.vertexBuffer);
-	});
+	meshes = std::move(meshResult.value());
 
 	return SDL_APP_CONTINUE;
 }
@@ -660,9 +642,9 @@ void VulkanEngine::DestroyBuffer(const AllocatedBuffer& buffer) const {
 	vmaDestroyBuffer(vmaAllocator, buffer.internalBuffer, buffer.allocation);
 }
 
-std::optional<GPUMeshBuffers> VulkanEngine::UploadMesh(std::span<uint32_t> indices, std::span<MyVertex> vertices) const {
+std::optional<GPUMeshBuffers> VulkanEngine::UploadMesh(std::span<Uint16> indices, std::span<MyVertex> vertices) const {
 	const size_t vertexBufferSize = vertices.size() * sizeof(MyVertex);
-	const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
+	const size_t indexBufferSize = indices.size() * sizeof(Uint16);
 
 	//create vertex buffer
 	std::optional<AllocatedBuffer> vertexBufferResult = CreateBuffer(vertexBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
@@ -805,10 +787,13 @@ void VulkanEngine::DrawImGui(const VkCommandBuffer& commandBuffer, const VkImage
 
 void VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) const {
 	//begin a render pass  connected to our draw image
-	const VkRenderingAttachmentInfo colorAttachment = vk_init::AttachmentInfo(drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	const VkRenderingAttachmentInfo colorAttachment = vk_init::AttachmentInfo(drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL);
+	const VkRenderingAttachmentInfo depthAttachment = vk_init::DepthAttachmentInfo(depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
-	const VkRenderingInfo renderInfo = vk_init::RenderingInfo(drawExtent, &colorAttachment, nullptr);
+	const VkRenderingInfo renderInfo = vk_init::RenderingInfo(drawExtent, &colorAttachment, &depthAttachment);
 	vkCmdBeginRendering(commandBuffer, &renderInfo);
+
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline);
 
 	//set dynamic viewport and scissor
 	const VkViewport viewport{
@@ -835,18 +820,41 @@ void VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) const {
 
 	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
+	if (ImGui::Begin("Camera")) {
+		ImGui::SliderFloat("Camera Radius", const_cast<float*>(&cameraRadius), -20.0f, 20.0f);
+		ImGui::SliderFloat("Camera Height", const_cast<float*>(&cameraHeight), -20.0f, 20.0f);
+		ImGui::SliderFloat("Camera Rotation Speed", const_cast<float*>(&cameraRotationSpeed), 0.0f, 0.002f);
+		ImGui::SliderFloat("Camera FOV", const_cast<float*>(&cameraFOV), 0.0f, 180.0f);
+		ImGui::End();
+	}
 
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline);
+	// > View Matrix
+	float camX = sinf(static_cast<float>(SDL_GetTicks()) * cameraRotationSpeed) * cameraRadius;
+	float camZ = cosf(static_cast<float>(SDL_GetTicks()) * cameraRotationSpeed) * cameraRadius;
+	math::float3 cameraPos = math::float3(camX, -cameraHeight, camZ);
+	math::float3 cameraTarget = math::float3(0.0f, 0.0f, 0.0f);
+	math::float3 up = math::float3(0.0f, 1.0f, 0.0f);
+	math::float4x4 view = inverse(look_at(cameraPos, cameraTarget, up));
+
+	// > Projection Matrix
+	math::int2 screenSize;
+	SDL_GetWindowSize(window, &screenSize.x, &screenSize.y);
+	math::float4x4 projection = perspective(math::degrees(cameraFOV).radians(),
+	                                  static_cast<float>(screenSize.x) / static_cast<float>(screenSize.y),
+	                                  0.1f, 1000.0f);
+
+	// invert the Y direction on projection matrix so that we are more similar to opengl and gltf axis
+	projection[1][1] *= -1;
 
 	const GPUDrawPushConstants pushConstants{
-		.worldMatrix = math::float4x4(1.0f),
-		.vertexBufferAddress = myRectangleMesh.vertexBufferAddress,
+		.worldMatrix = view * projection,
+		.vertexBufferAddress = meshes[0]->meshBuffers.vertexBufferAddress,
 	};
 
 	vkCmdPushConstants(commandBuffer, meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
-	vkCmdBindIndexBuffer(commandBuffer, myRectangleMesh.indexBuffer.internalBuffer, 0, VK_INDEX_TYPE_UINT32);
+	vkCmdBindIndexBuffer(commandBuffer, meshes[0]->meshBuffers.indexBuffer.internalBuffer, 0, VK_INDEX_TYPE_UINT16);
 
-	vkCmdDrawIndexed(commandBuffer, 6, 1, 0, 0, 0);
+	vkCmdDrawIndexed(commandBuffer, meshes[0]->surfaces[0].count, 1, meshes[0]->surfaces[0].startIndex, 0, 0);
 
 
 	vkCmdEndRendering(commandBuffer);
@@ -869,10 +877,8 @@ SDL_AppResult VulkanEngine::Draw() {
 		ImGui::InputFloat4("data2", const_cast<float*>(&currentEffect.data.data2.x));
 		ImGui::InputFloat4("data3", const_cast<float*>(&currentEffect.data.data3.x));
 		ImGui::InputFloat4("data4", const_cast<float*>(&currentEffect.data.data4.x));
+		ImGui::End();
 	}
-	ImGui::End();
-
-	ImGui::Render();
 
 	VK_CHECK(vkWaitForFences(device, 1, &GetCurrentFrame().renderFence, true, secondInNanoseconds), "Couldn't wait for fence");
 
@@ -901,6 +907,7 @@ SDL_AppResult VulkanEngine::Draw() {
 	DrawBackground(commandBuffer);
 
 	vk_util::TransitionImage(commandBuffer, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	vk_util::TransitionImage(commandBuffer, depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
 	DrawGeometry(commandBuffer);
 
@@ -915,6 +922,7 @@ SDL_AppResult VulkanEngine::Draw() {
 	vk_util::TransitionImage(commandBuffer, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
 
 	// draw imgui into the swapchain image
+	ImGui::Render();
 	DrawImGui(commandBuffer, swapchainImageViews[swapchainImageIndex]);
 
 	// set swapchain image layout to Present so we can show it on the screen
@@ -958,6 +966,11 @@ void VulkanEngine::Cleanup(const SDL_AppResult result) {
 			vkDestroySemaphore(device, frame.swapchainSemaphore, nullptr);
 
 			frame.frameDeletionQueue.Flush();
+		}
+
+		for (const std::shared_ptr mesh : meshes) {
+			DestroyBuffer(mesh->meshBuffers.indexBuffer);
+			DestroyBuffer(mesh->meshBuffers.vertexBuffer);
 		}
 
 		mainDeletionQueue.Flush();

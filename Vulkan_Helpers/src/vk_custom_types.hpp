@@ -1,15 +1,6 @@
 #pragma once
 
-// C++
-#include <deque>
-#include <functional>
-#include <ranges>
-
-// Vulkan Helper Libraries
-#include <vk_mem_alloc.h>
-
-// RSL
-#include <rsl/math>
+#include "mass_includer.hpp"
 
 struct DeletionQueue {
 	std::deque<std::function<void()>> deleters;
@@ -44,9 +35,9 @@ struct AllocatedBuffer {
 
 struct MyVertex {
 	math::float3 pos;
-	math::float1 uvX; //spread out to keep the struct small
+	float uvX; //spread out to keep the struct small
 	math::float3 normal;
-	math::float1 uvY; //spread out to keep the struct small
+	float uvY; //spread out to keep the struct small
 	math::float4 colour;
 };
 

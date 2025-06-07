@@ -1,10 +1,6 @@
 #pragma once
 
-// C++
-#include <span>
-
-// Vulkan Helper Libraries
-#include <volk.h>
+#include "mass_includer.hpp"
 
 namespace vk_init {
 	VkCommandPoolCreateInfo CommandPoolCreateInfo(uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags = 0);

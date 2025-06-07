@@ -1,12 +1,7 @@
+// Impl
 #include "vk_pipelines.hpp"
 
-// C++
-#include <array>
-#include <optional>
-
-// SDL3
-#include <SDL3/SDL.h>
-
+// Engine
 #include "vk_initializers.hpp"
 #include "vk_macros.hpp"
 
@@ -116,6 +111,18 @@ void PipelineBuilder::SetColourAttachmentFormat(const VkFormat format) {
 
 void PipelineBuilder::SetDepthFormat(const VkFormat format) {
 	renderInfo.depthAttachmentFormat = format;
+}
+
+void PipelineBuilder::EnableDepthTest(const bool depthWriteEnable, const VkCompareOp op) {
+	depthStencil.depthTestEnable = true;
+	depthStencil.depthWriteEnable = depthWriteEnable;
+	depthStencil.depthCompareOp = op;
+	depthStencil.depthBoundsTestEnable = false;
+	depthStencil.stencilTestEnable = false;
+	depthStencil.front = VkStencilOpState{};
+	depthStencil.back = VkStencilOpState{};
+	depthStencil.minDepthBounds = 0.0f;
+	depthStencil.maxDepthBounds = 1.0f;
 }
 
 void PipelineBuilder::DisableDepthTest() {

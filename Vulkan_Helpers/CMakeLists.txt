@@ -13,6 +13,7 @@ add_executable(${PROJECT_NAME} WIN32
 		src/vk_descriptors.cpp
 		src/vk_images.cpp
 		src/vk_initializers.cpp
+		src/vk_loader.cpp
 		src/vk_pipelines.cpp
 )
 
@@ -37,6 +38,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE GPUOpen::VulkanMemoryAllocator)
 # Link to the Dear ImGui library.
 target_compile_definitions(${PROJECT_NAME} PRIVATE IMGUI_IMPL_VULKAN_USE_VOLK)
 target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
+
+# Link to the Assimp library.
+target_link_libraries(${PROJECT_NAME} PRIVATE assimp)
 
 # Copy assets to the build output directory after building.
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD

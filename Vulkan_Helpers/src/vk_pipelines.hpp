@@ -1,11 +1,6 @@
 #pragma once
 
-// C++
-#include <optional>
-#include <vector>
-
-// Vulkan Helper Libraries
-#include <volk.h>
+#include "mass_includer.hpp"
 
 namespace vk_util {
 	std::optional<VkShaderModule> LoadShaderModule(const char* filePath, const VkDevice& device);
@@ -36,6 +31,7 @@ public:
 	void DisableBlending();
 	void SetColourAttachmentFormat(VkFormat format);
 	void SetDepthFormat(VkFormat format);
+	void EnableDepthTest(bool depthWriteEnable, VkCompareOp op);
 	void DisableDepthTest();
 
 	std::optional<VkPipeline> BuildPipeline(const VkDevice& device);

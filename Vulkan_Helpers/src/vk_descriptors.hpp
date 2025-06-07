@@ -1,12 +1,6 @@
 #pragma once
 
-// C++
-#include <optional>
-#include <span>
-#include <vector>
-
-// Vulkan Helper Libraries
-#include <volk.h>
+#include "mass_includer.hpp"
 
 struct DescriptorLayoutBuilder {
 	std::vector<VkDescriptorSetLayoutBinding> bindings;

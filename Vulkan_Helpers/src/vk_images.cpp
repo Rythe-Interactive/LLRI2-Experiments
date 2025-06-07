@@ -1,3 +1,4 @@
+// Impl
 #include "vk_images.hpp"
 
 VkImageSubresourceRange vk_util::ImageSubresourceRange(const VkImageAspectFlags aspectMask) {

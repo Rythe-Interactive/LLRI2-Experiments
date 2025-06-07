@@ -1,14 +1,6 @@
 #pragma once
 
-// C++
-#include <optional>
-
-// SDL3
-#include <SDL3/SDL.h>
-
-// Vulkan Helper Libraries
-#define VK_NO_PROTOTYPES
-#include <vulkan/vk_enum_string_helper.h>
+#include "mass_includer.hpp"
 
 #define VK_CHECK(x, msg) \
 	do { \

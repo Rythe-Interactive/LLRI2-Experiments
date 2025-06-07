@@ -1,5 +1,7 @@
+// Impl
 #include "vk_descriptors.hpp"
 
+// Engine
 #include "vk_macros.hpp"
 
 void DescriptorLayoutBuilder::AddBinding(const uint32_t binding, const VkDescriptorType type) {

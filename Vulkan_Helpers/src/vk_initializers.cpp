@@ -1,3 +1,4 @@
+// Impl
 #include "vk_initializers.hpp"
 
 VkCommandPoolCreateInfo vk_init::CommandPoolCreateInfo(const uint32_t queueFamilyIndex, const VkCommandPoolCreateFlags flags) {
