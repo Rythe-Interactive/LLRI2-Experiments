@@ -1,9 +1,13 @@
+// C++
+#include <filesystem>
+#include <string>
+
 // SDL3
 #define SDL_MAIN_USE_CALLBACKS
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
-// RSL Math
+// RSL
 #define RSL_DEFAULT_ALIGNED_MATH false
 #include <rsl/math>
 
@@ -11,10 +15,6 @@
 #include <assimp/Importer.hpp>      // C++ importer interface
 #include <assimp/scene.h>           // Output data structure
 #include <assimp/postprocess.h>     // Post-processing flags
-
-// C++
-#include <filesystem>
-#include <string>
 
 // Macros to retrieve CMake variables
 #define Q(x) #x
