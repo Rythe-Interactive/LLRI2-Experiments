@@ -42,11 +42,11 @@ target_include_directories(rsl SYSTEM PUBLIC ${RSL_DIR}/src)
 target_include_directories(rsl SYSTEM PUBLIC ${RSL_DIR}/third_party/spdlog/include)
 
 ### Enable CPU features
-if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
+if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
 	target_compile_options(rsl PUBLIC -msse -mfma)
-elseif(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+elseif (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
 	target_compile_options(rsl PUBLIC /Oi /Ob1)
-endif()
+endif ()
 
 # Precompiled headers are used to speed up compilation.
 # target_precompile_headers(rsl INTERFACE ${RSL_DIR}/src/rsl/math) #TODO: Does not work...
