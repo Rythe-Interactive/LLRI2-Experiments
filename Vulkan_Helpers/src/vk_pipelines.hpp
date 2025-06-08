@@ -28,6 +28,8 @@ public:
 	void SetPolygonMode(VkPolygonMode mode);
 	void SetCullMode(VkCullModeFlags cullMode, VkFrontFace frontFace);
 	void SetMultiSamplingNone();
+	void EnableBlendingAdditive();
+	void EnableBlendingAlphaBlend();
 	void DisableBlending();
 	void SetColourAttachmentFormat(VkFormat format);
 	void SetDepthFormat(VkFormat format);
