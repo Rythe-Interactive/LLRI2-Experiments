@@ -161,11 +161,6 @@ SDL_AppResult VulkanEngine::InitSyncStructures() {
 		VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &frame.swapchainSemaphore), "Couldn't create swapchain semaphore");
 	}
 
-	readyForPresentSemaphores.resize(swapchainImages.size());
-	for (size_t i = 0; i < swapchainImages.size(); i++) {
-		VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &readyForPresentSemaphores[i]), "Couldn't create ready for present semaphore");
-	}
-
 	VK_CHECK(vkCreateFence(device, &fenceCreateInfo, nullptr, &immediateSubmitFence), "Couldn't create immediate submit fence");
 	mainDeletionQueue.PushFunction([&] { vkDestroyFence(device, immediateSubmitFence, nullptr); });
 
@@ -199,6 +194,12 @@ SDL_AppResult VulkanEngine::CreateSwapchain(const uint32_t width, const uint32_t
 	swapchainExtent = vkbSwapchain.extent;
 	swapchainImages = vkbSwapchain.get_images().value();
 	swapchainImageViews = vkbSwapchain.get_image_views().value();
+
+	readyForPresentSemaphores.resize(swapchainImages.size());
+	for (size_t i = 0; i < swapchainImages.size(); i++) {
+		VkSemaphoreCreateInfo semaphoreCreateInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+		VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &readyForPresentSemaphores[i]), "Couldn't create ready for present semaphore");
+	}
 
 	return SDL_APP_CONTINUE;
 }
