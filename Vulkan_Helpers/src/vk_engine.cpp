@@ -163,7 +163,7 @@ SDL_AppResult VulkanEngine::InitSyncStructures() {
 
 	readyForPresentSemaphores.resize(swapchainImages.size());
 	for (size_t i = 0; i < swapchainImages.size(); i++) {
-		VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &readyForPresentSemaphores[i]), "Couldn't create semaphore");
+		VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &readyForPresentSemaphores[i]), "Couldn't create ready for present semaphore");
 	}
 
 	VK_CHECK(vkCreateFence(device, &fenceCreateInfo, nullptr, &immediateSubmitFence), "Couldn't create immediate submit fence");
