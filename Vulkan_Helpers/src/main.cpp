@@ -26,19 +26,8 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 
 // ReSharper disable once CppParameterMayBeConstPtrOrRef
 SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
-	switch (event->type) {
-		case SDL_EVENT_QUIT:
-			return SDL_APP_SUCCESS; // end the program, reporting success to the OS.
-		case SDL_EVENT_KEY_DOWN:
-			if (event->key.key != SDLK_ESCAPE && event->key.key != SDLK_Q) break;
-			return SDL_APP_SUCCESS; // end the program, reporting success to the OS.
-		default:
-			break;
-	}
-
-	ImGui_ImplSDL3_ProcessEvent(event);
-
-	return SDL_APP_CONTINUE;
+	VulkanEngine* vulkanEngine = static_cast<VulkanEngine*>(appstate);
+	return vulkanEngine->HandleEvent(event);
 }
 
 SDL_AppResult SDL_AppIterate(void* appstate) {

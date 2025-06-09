@@ -841,8 +841,8 @@ void VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) const {
 	math::int2 screenSize;
 	SDL_GetWindowSize(window, &screenSize.x, &screenSize.y);
 	math::float4x4 projection = perspective(math::degrees(cameraFOV).radians(),
-	                                  static_cast<float>(screenSize.x) / static_cast<float>(screenSize.y),
-	                                  0.1f, 1000.0f);
+	                                        static_cast<float>(screenSize.x) / static_cast<float>(screenSize.y),
+	                                        0.1f, 1000.0f);
 
 	// invert the Y direction on projection matrix so that we are more similar to opengl and gltf axis
 	projection[1][1] *= -1;
@@ -952,6 +952,22 @@ SDL_AppResult VulkanEngine::Draw() {
 	VK_CHECK(vkQueuePresentKHR(graphicsQueue, &presentInfo), "Couldn't present image");
 
 	frameNumber++;
+
+	return SDL_APP_CONTINUE;
+}
+
+SDL_AppResult VulkanEngine::HandleEvent(const SDL_Event* event) {
+	switch (event->type) {
+		case SDL_EVENT_QUIT:
+			return SDL_APP_SUCCESS; // end the program, reporting success to the OS.
+		case SDL_EVENT_KEY_DOWN:
+			if (event->key.key != SDLK_ESCAPE && event->key.key != SDLK_Q) break;
+			return SDL_APP_SUCCESS; // end the program, reporting success to the OS.
+		default:
+			break;
+	}
+
+	ImGui_ImplSDL3_ProcessEvent(event);
 
 	return SDL_APP_CONTINUE;
 }

@@ -133,6 +133,7 @@ public:
 
 	SDL_AppResult Init(int width, int height);
 	SDL_AppResult Draw();
+	SDL_AppResult HandleEvent(const SDL_Event* event);
 	void Cleanup(SDL_AppResult result);
 
 public:
