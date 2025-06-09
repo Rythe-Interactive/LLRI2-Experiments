@@ -285,6 +285,27 @@ void VulkanEngine::DestroySwapchain() const {
 	}
 }
 
+SDL_AppResult VulkanEngine::ResizeSwapchain() {
+	vkDeviceWaitIdle(device);
+
+	DestroySwapchain();
+
+	int32_t width, height;
+	if (!SDL_GetWindowSize(window, &width, &height)) {
+		SDL_Log("Couldn't get window size: %s", SDL_GetError());
+		return SDL_APP_FAILURE;
+	}
+	const uint32_t uWidth = static_cast<uint32_t>(width);
+	const uint32_t uHeight = static_cast<uint32_t>(height);
+
+	if (const SDL_AppResult res = CreateSwapchain(uWidth, uHeight); res != SDL_APP_CONTINUE) {
+		return res;
+	}
+	resizeRequested = false;
+
+	return SDL_APP_CONTINUE;
+}
+
 SDL_AppResult VulkanEngine::InitDescriptors() {
 	//create a descriptor pool that will hold 10 sets with 1 image each
 	std::vector sizes =
@@ -720,7 +741,7 @@ std::filesystem::path VulkanEngine::GetAssetsDir() const {
 }
 
 SDL_AppResult VulkanEngine::Init(const int width, const int height) {
-	constexpr SDL_WindowFlags windowFlags = SDL_WINDOW_VULKAN;
+	constexpr SDL_WindowFlags windowFlags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE;
 	window = SDL_CreateWindow(name.c_str(), width, height, windowFlags);
 
 	if (window == nullptr) {
@@ -862,6 +883,12 @@ void VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) const {
 }
 
 SDL_AppResult VulkanEngine::Draw() {
+	if (resizeRequested) {
+		if (const SDL_AppResult res = ResizeSwapchain(); res != SDL_APP_CONTINUE) {
+			return res;
+		}
+	}
+
 	ImGui_ImplVulkan_NewFrame();
 	ImGui_ImplSDL3_NewFrame();
 	ImGui::NewFrame();
@@ -869,6 +896,8 @@ SDL_AppResult VulkanEngine::Draw() {
 	ImGui::ShowDemoWindow();
 
 	if (ImGui::Begin("Background")) {
+		ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.0f);
+
 		const ComputeEffect& currentEffect = backgroundEffects[currentBackgroundEffectIndex];
 
 		ImGui::Text("Selected effect: ", currentEffect.name);
@@ -885,19 +914,28 @@ SDL_AppResult VulkanEngine::Draw() {
 
 	GetCurrentFrame().frameDeletionQueue.Flush();
 
-	VK_CHECK(vkResetFences(device, 1, &GetCurrentFrame().renderFence), "Couldn't reset fence");
-
 	uint32_t swapchainImageIndex;
-	VK_CHECK(vkAcquireNextImageKHR(device, swapchain, secondInNanoseconds, GetCurrentFrame().swapchainSemaphore, nullptr, &swapchainImageIndex), "Couldn't acquire next image");
+	if (const VkResult err = vkAcquireNextImageKHR(device, swapchain, secondInNanoseconds, GetCurrentFrame().swapchainSemaphore, nullptr, &swapchainImageIndex);
+		err == VK_ERROR_OUT_OF_DATE_KHR) {
+		resizeRequested = true;
+		ImGui::EndFrame();
+		return SDL_APP_CONTINUE;
+	} else if (err != VK_SUCCESS) {
+		SDL_Log("Detected Vulkan error: %s: %s", "Couldn't acquire next image", string_VkResult(err));
+		SDL_TriggerBreakpoint();
+		return SDL_APP_FAILURE;
+	}
+
+	drawExtent.height = std::min(swapchainExtent.height, drawImage.imageExtent.height) * renderScale;
+	drawExtent.width = std::min(swapchainExtent.width, drawImage.imageExtent.width) * renderScale;
+
+	VK_CHECK(vkResetFences(device, 1, &GetCurrentFrame().renderFence), "Couldn't reset fence");
 
 	const VkCommandBuffer& commandBuffer = GetCurrentFrame().mainCommandBuffer;
 
 	VK_CHECK(vkResetCommandBuffer(commandBuffer, 0), "Couldn't reset command buffer");
 
 	const VkCommandBufferBeginInfo commandBufferBeginInfo = vk_init::CommandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-
-	drawExtent.width = drawImage.imageExtent.width;
-	drawExtent.height = drawImage.imageExtent.height;
 
 	VK_CHECK(vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo), "Couldn't begin command buffer");
 
@@ -949,7 +987,15 @@ SDL_AppResult VulkanEngine::Draw() {
 		.pImageIndices = &swapchainImageIndex,
 	};
 
-	VK_CHECK(vkQueuePresentKHR(graphicsQueue, &presentInfo), "Couldn't present image");
+	if (const VkResult presentResult = vkQueuePresentKHR(graphicsQueue, &presentInfo);
+		presentResult == VK_ERROR_OUT_OF_DATE_KHR) {
+		resizeRequested = true;
+		return SDL_APP_CONTINUE;
+	} else if (presentResult != VK_SUCCESS) {
+		SDL_Log("Detected Vulkan error: %s: %s", "Couldn't present image", string_VkResult(presentResult));
+		SDL_TriggerBreakpoint();
+		return SDL_APP_FAILURE;
+	}
 
 	frameNumber++;
 
@@ -963,6 +1009,11 @@ SDL_AppResult VulkanEngine::HandleEvent(const SDL_Event* event) {
 		case SDL_EVENT_KEY_DOWN:
 			if (event->key.key != SDLK_ESCAPE && event->key.key != SDLK_Q) break;
 			return SDL_APP_SUCCESS; // end the program, reporting success to the OS.
+		case SDL_EVENT_WINDOW_RESIZED:
+			if (const SDL_AppResult res = ResizeSwapchain(); res != SDL_APP_CONTINUE) {
+				return res;
+			}
+			break;
 		default:
 			break;
 	}

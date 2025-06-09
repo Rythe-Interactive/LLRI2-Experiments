@@ -53,6 +53,9 @@ class VulkanEngine {
 	AllocatedImage drawImage = {};
 	AllocatedImage depthImage = {};
 	VkExtent2D drawExtent = {};
+	float renderScale = 1.0f;
+
+	bool resizeRequested = false;
 
 	DescriptorAllocator globalDescriptorAllocator = {};
 
@@ -101,6 +104,7 @@ private:
 	SDL_AppResult CreateSwapchain(uint32_t width, uint32_t height);
 	SDL_AppResult InitSwapchain();
 	void DestroySwapchain() const;
+	SDL_AppResult ResizeSwapchain();
 
 private:
 	SDL_AppResult InitDescriptors();
