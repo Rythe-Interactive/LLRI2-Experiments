@@ -983,20 +983,7 @@ SDL_AppResult VulkanEngine::Init(const int width, const int height) {
 
 SDL_AppResult VulkanEngine::DrawBackground(const VkCommandBuffer& commandBuffer) {
 	if (currentBackgroundEffectIndex == 2) {
-		constexpr uint32_t width = 16;
-		constexpr uint32_t height = 16;
-		//screen image
-		std::array<uint32_t, width * height> pixels{}; //for 16x16 checkerboard texture
-		for (int x = 0; x < width; x++) {
-			for (int y = 0; y < height; y++) {
-				// Random colour
-				const float r = rand() / static_cast<float>(RAND_MAX);
-				const float g = rand() / static_cast<float>(RAND_MAX);
-				const float b = rand() / static_cast<float>(RAND_MAX);
-				pixels[y * width + x] = packUnorm4x8(math::float4(r, g, b, 1.0f));
-			}
-		}
-		if (const SDL_AppResult res = CreateScreenImage(pixels.data(), sizeof(uint32_t), width, height); res != SDL_APP_CONTINUE) {
+		if (const SDL_AppResult res = CreateScreenImage(doomPixels, doomPixelSize, doomPixelsWidth, doomPixelsHeight); res != SDL_APP_CONTINUE) {
 			return res;
 		}
 
@@ -1388,4 +1375,15 @@ void VulkanEngine::Cleanup(const SDL_AppResult result) {
 
 		SDL_DestroyWindow(window);
 	}
+}
+
+void VulkanEngine::SetScreenBuffer(void* pixels, const size_t pixelSize, const uint32_t width, const uint32_t height) {
+	doomPixels = pixels;
+	doomPixelSize = pixelSize;
+	doomPixelsWidth = width;
+	doomPixelsHeight = height;
+}
+
+void VulkanEngine::SetWindowTitle(const std::string& title) const {
+	SDL_SetWindowTitle(window, title.c_str());
 }

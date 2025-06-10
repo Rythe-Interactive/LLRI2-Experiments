@@ -13,7 +13,7 @@ void main()
 	ivec2 size = imageSize(image);
 	if (texelCoord.x < size.x && texelCoord.y < size.y)
 	{
-		vec4 screenColor = imageLoad(screen, texelCoord);
+		vec4 screenColor = imageLoad(screen, texelCoord).bgra;
 		imageStore(image, texelCoord, screenColor);
 	}
 }

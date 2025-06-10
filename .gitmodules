@@ -19,3 +19,6 @@
 [submodule "vendored/imgui"]
 	path = vendored/imgui
 	url = https://github.com/ocornut/imgui.git
+[submodule "vendored/doomgeneric"]
+	path = vendored/doomgeneric
+	url = https://github.com/ozkl/doomgeneric.git

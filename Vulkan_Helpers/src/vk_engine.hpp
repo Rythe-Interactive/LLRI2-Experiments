@@ -124,6 +124,11 @@ class VulkanEngine {
 	VkDescriptorSet screenImageDescriptors = nullptr;
 	VkDescriptorSetLayout screenImageDescriptorLayout = nullptr;
 
+	void* doomPixels = nullptr;
+	size_t doomPixelSize = 0;
+	uint32_t doomPixelsWidth = 0;
+	uint32_t doomPixelsHeight = 0;
+
 private:
 	[[nodiscard]] SDL_AppResult InitVulkan();
 	[[nodiscard]] SDL_AppResult InitCommands();
@@ -176,6 +181,8 @@ public:
 	[[nodiscard]] SDL_AppResult Draw();
 	[[nodiscard]] SDL_AppResult HandleEvent(const SDL_Event* event);
 	void Cleanup(SDL_AppResult result);
+	void SetScreenBuffer(void* pixels, size_t pixelSize, uint32_t width, uint32_t height);
+	void SetWindowTitle(const std::string& title) const;
 
 public:
 	[[nodiscard]] SDL_AppResult ImmediateSubmit(std::function<void(VkCommandBuffer commandBuffer)>&& function) const;

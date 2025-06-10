@@ -42,6 +42,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
 # Link to the Assimp library.
 target_link_libraries(${PROJECT_NAME} PRIVATE assimp)
 
+# Link to doomgeneric
+target_link_libraries(${PROJECT_NAME} PRIVATE doomgeneric)
+
 # Copy assets to the build output directory after building.
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/${PROJECT_NAME}-assets"
