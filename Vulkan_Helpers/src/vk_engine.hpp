@@ -83,6 +83,8 @@ class VulkanEngine {
 		const char* name{};
 		VkPipeline pipeline{};
 		VkPipelineLayout layout{};
+		VkDescriptorSet descriptorSet{};
+		bool hasPushConstants = true;
 		ComputePushConstants data;
 	};
 
@@ -116,6 +118,10 @@ class VulkanEngine {
 
 	VkDescriptorSetLayout singleImageDescriptorLayout = nullptr;
 
+	VkDescriptorSet screenImageDescriptors = nullptr;
+	VkDescriptorSetLayout screenImageDescriptorLayout = nullptr;
+	AllocatedImage screenImage = {};
+
 private:
 	SDL_AppResult InitVulkan();
 	SDL_AppResult InitCommands();
@@ -146,13 +152,13 @@ private:
 	void DestroyBuffer(const AllocatedBuffer& buffer) const;
 
 private:
-	void DrawBackground(const VkCommandBuffer& commandBuffer) const;
+	SDL_AppResult DrawBackground(const VkCommandBuffer& commandBuffer) const;
 	void DrawImGui(const VkCommandBuffer& commandBuffer, const VkImageView& targetImageView) const;
 	SDL_AppResult DrawGeometry(const VkCommandBuffer& commandBuffer);
 
 private:
 	std::optional<AllocatedImage> CreateImage(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false) const;
-	std::optional<AllocatedImage> CreateImage(const void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false) const;
+	std::optional<AllocatedImage> CreateImage(const void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false, VkImageLayout finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) const;
 	void DestroyImage(const AllocatedImage& allocatedImage) const;
 
 public:

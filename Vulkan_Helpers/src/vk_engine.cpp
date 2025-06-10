@@ -15,6 +15,24 @@
 // ReSharper disable CppDFAConstantParameter
 // ReSharper disable CppDFAConstantConditions
 // ReSharper disable CppDFAUnreachableCode
+
+// From https://github.com/g-truc/glm/blob/2d4c4b4dd31fde06cfffad7915c2b3006402322f/glm/detail/func_packing.inl#L67C2-L83C3
+uint32_t packUnorm4x8(math::float4 const& v) {
+	union {
+		unsigned char in[4];
+		uint out;
+	} u;
+
+	math::float4 result = round(clamp(v, 0.0f, 1.0f) * 255.0f);
+
+	u.in[0] = result[0];
+	u.in[1] = result[1];
+	u.in[2] = result[2];
+	u.in[3] = result[3];
+
+	return u.out;
+}
+
 #pragma region Vulkan Initialization
 
 SDL_AppResult VulkanEngine::InitVulkan() {
@@ -314,7 +332,7 @@ SDL_AppResult VulkanEngine::InitDescriptors() {
 	//create a descriptor pool that will hold 10 sets with 1 image each
 	std::vector sizes =
 	{
-		DescriptorAllocator::PoolSizeRatio{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}
+		DescriptorAllocator::PoolSizeRatio{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1},
 	};
 
 	globalDescriptorAllocator.InitPool(device, 10, sizes);
@@ -329,6 +347,17 @@ SDL_AppResult VulkanEngine::InitDescriptors() {
 			return SDL_APP_FAILURE;
 		}
 		drawImageDescriptorLayout = buildResult.value();
+	}
+	{
+		DescriptorLayoutBuilder builder;
+		builder.AddBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+		builder.AddBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+		const std::optional<VkDescriptorSetLayout> buildResult = builder.Build(device, VK_SHADER_STAGE_COMPUTE_BIT);
+		if (!buildResult.has_value()) {
+			SDL_Log("Couldn't create descriptor set layout for screen image descriptor");
+			return SDL_APP_FAILURE;
+		}
+		screenImageDescriptorLayout = buildResult.value();
 	}
 	{
 		DescriptorLayoutBuilder builder;
@@ -365,12 +394,46 @@ SDL_AppResult VulkanEngine::InitDescriptors() {
 		writer.UpdateSet(device, drawImageDescriptors);
 	}
 
+	//screen image
+	const uint32_t magenta = packUnorm4x8(math::float4(1, 0, 1, 1));
+	const uint32_t black = packUnorm4x8(math::float4(0, 0, 0, 0));
+	std::array<uint32_t, 16 * 16> pixels; //for 16x16 checkerboard texture
+	for (int x = 0; x < 16; x++) {
+		for (int y = 0; y < 16; y++) {
+			pixels[y * 16 + x] = x % 2 ^ y % 2 ? magenta : black;
+		}
+	}
+	std::optional<AllocatedImage> screenImageResult = CreateImage(pixels.data(), VkExtent3D{16, 16, 1}, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_STORAGE_BIT, false, VK_IMAGE_LAYOUT_GENERAL);
+	if (!screenImageResult.has_value()) {
+		SDL_Log("Couldn't create screen image");
+		return SDL_APP_FAILURE;
+	}
+	screenImage = screenImageResult.value();
+
+	//allocate a descriptor set for the screen image
+	const std::optional<VkDescriptorSet> screenAllocationResult = globalDescriptorAllocator.Allocate(device, screenImageDescriptorLayout);
+	if (!screenAllocationResult.has_value()) {
+		SDL_Log("Couldn't allocate descriptor set for screen image");
+		return SDL_APP_FAILURE;
+	}
+	screenImageDescriptors = screenAllocationResult.value();
+
+	{
+		DescriptorWriter writer;
+		writer.WriteImage(0, drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+		writer.WriteImage(1, screenImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+		writer.UpdateSet(device, screenImageDescriptors);
+	}
+
+
 	//make sure both the descriptor allocator and the new layout get cleaned up properly
 	mainDeletionQueue.PushFunction([&] {
 		globalDescriptorAllocator.DestroyPool(device);
 
+		DestroyImage(screenImage);
 		vkDestroyDescriptorSetLayout(device, gpuSceneDataDescriptorLayout, nullptr);
 		vkDestroyDescriptorSetLayout(device, singleImageDescriptorLayout, nullptr);
+		vkDestroyDescriptorSetLayout(device, screenImageDescriptorLayout, nullptr);
 		vkDestroyDescriptorSetLayout(device, drawImageDescriptorLayout, nullptr);
 	});
 
@@ -442,6 +505,16 @@ SDL_AppResult VulkanEngine::InitBackgroundPipelines() {
 		}
 		skyShader = skyShaderResult.value();
 	}
+	VkShaderModule screenShader;
+	{
+		const std::filesystem::path screenShaderPath = compiledShadersPath / "screen.comp.spv";
+		const std::optional<VkShaderModule> screenShaderResult = vk_util::LoadShaderModule(screenShaderPath.string().c_str(), device);
+		if (!screenShaderResult.has_value()) {
+			SDL_Log("Couldn't load compute shader module: %s", screenShaderPath.string().c_str());
+			return SDL_APP_FAILURE;
+		}
+		screenShader = screenShaderResult.value();
+	}
 
 	const VkPipelineShaderStageCreateInfo stageCreateInfo{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -460,6 +533,7 @@ SDL_AppResult VulkanEngine::InitBackgroundPipelines() {
 	ComputeEffect gradientEffect{
 		.name = "gradient",
 		.layout = computePipelineLayout,
+		.descriptorSet = drawImageDescriptors,
 		.data = ComputePushConstants{
 			//default colours
 			.data1 = math::float4{1.0f, 0.0f, 0.0f, 1.0f}, // Red
@@ -474,6 +548,7 @@ SDL_AppResult VulkanEngine::InitBackgroundPipelines() {
 	ComputeEffect skyEffect{
 		.name = "sky",
 		.layout = computePipelineLayout,
+		.descriptorSet = drawImageDescriptors,
 		.data = ComputePushConstants{
 			//default colours
 			.data1 = math::float4{0.1f, 0.2f, 0.4f, 0.97f}, // Light blue
@@ -481,16 +556,40 @@ SDL_AppResult VulkanEngine::InitBackgroundPipelines() {
 	};
 	VK_CHECK(vkCreateComputePipelines(device, nullptr, 1, &computePipelineCreateInfo, nullptr, &skyEffect.pipeline), "Couldn't create compute pipeline: sky");
 
+	const VkPipelineLayoutCreateInfo computeLayoutScreen{
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+		.setLayoutCount = 1,
+		.pSetLayouts = &screenImageDescriptorLayout,
+	};
+
+	VkPipelineLayout computePipelineLayoutScreen;
+	VK_CHECK(vkCreatePipelineLayout(device, &computeLayoutScreen, nullptr, &computePipelineLayoutScreen), "Couldn't create screen compute pipeline layout");
+
+	computePipelineCreateInfo.stage.module = screenShader;
+	computePipelineCreateInfo.layout = computePipelineLayoutScreen;
+
+	ComputeEffect screenEffect{
+		.name = "screen",
+		.layout = computePipelineLayoutScreen,
+		.descriptorSet = screenImageDescriptors,
+		.hasPushConstants = false,
+	};
+	VK_CHECK(vkCreateComputePipelines(device, nullptr, 1, &computePipelineCreateInfo, nullptr, &screenEffect.pipeline), "Couldn't create compute pipeline: sky");
+
 	//add the effects to the background effects vector
 	backgroundEffects.push_back(gradientEffect);
 	backgroundEffects.push_back(skyEffect);
+	backgroundEffects.push_back(screenEffect);
 
 	//destroy the shader modules we created
 	vkDestroyShaderModule(device, gradientShader, nullptr);
 	vkDestroyShaderModule(device, skyShader, nullptr);
+	vkDestroyShaderModule(device, screenShader, nullptr);
 
 	mainDeletionQueue.PushFunction([=, this] {
+		vkDestroyPipelineLayout(device, computePipelineLayoutScreen, nullptr);
 		vkDestroyPipelineLayout(device, computePipelineLayout, nullptr);
+		vkDestroyPipeline(device, screenEffect.pipeline, nullptr);
 		vkDestroyPipeline(device, skyEffect.pipeline, nullptr);
 		vkDestroyPipeline(device, gradientEffect.pipeline, nullptr);
 	});
@@ -659,23 +758,6 @@ SDL_AppResult VulkanEngine::InitImgui() {
 	return SDL_APP_CONTINUE;
 }
 
-// From https://github.com/g-truc/glm/blob/2d4c4b4dd31fde06cfffad7915c2b3006402322f/glm/detail/func_packing.inl#L67C2-L83C3
-uint32_t packUnorm4x8(math::float4 const& v) {
-	union {
-		unsigned char in[4];
-		uint out;
-	} u;
-
-	math::float4 result = round(clamp(v, 0.0f, 1.0f) * 255.0f);
-
-	u.in[0] = result[0];
-	u.in[1] = result[1];
-	u.in[2] = result[2];
-	u.in[3] = result[3];
-
-	return u.out;
-}
-
 SDL_AppResult VulkanEngine::InitDefaultData() {
 	const std::filesystem::path fullPath = GetAssetsDir() / "models/suzanne/suzanne.obj";
 	// const std::filesystem::path fullPath = GetAssetsDir() / "models/container/blender_quad.obj";
@@ -717,7 +799,7 @@ SDL_AppResult VulkanEngine::InitDefaultData() {
 	blackImage = blackImageResult.value();
 
 	//checkerboard image
-	uint32_t magenta = packUnorm4x8(math::float4(1, 0, 1, 1));
+	const uint32_t magenta = packUnorm4x8(math::float4(1, 0, 1, 1));
 	std::array<uint32_t, 16 * 16> pixels; //for 16x16 checkerboard texture
 	for (int x = 0; x < 16; x++) {
 		for (int y = 0; y < 16; y++) {
@@ -895,16 +977,20 @@ SDL_AppResult VulkanEngine::Init(const int width, const int height) {
 	return SDL_APP_CONTINUE;
 }
 
-void VulkanEngine::DrawBackground(const VkCommandBuffer& commandBuffer) const {
+SDL_AppResult VulkanEngine::DrawBackground(const VkCommandBuffer& commandBuffer) const {
 	const ComputeEffect& currentEffect = backgroundEffects[currentBackgroundEffectIndex];
 
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, currentEffect.pipeline);
 
-	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, currentEffect.layout, 0, 1, &drawImageDescriptors, 0, nullptr);
+	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, currentEffect.layout, 0, 1, &currentEffect.descriptorSet, 0, nullptr);
 
-	vkCmdPushConstants(commandBuffer, currentEffect.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &currentEffect.data);
+	if (currentEffect.hasPushConstants) {
+		vkCmdPushConstants(commandBuffer, currentEffect.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &currentEffect.data);
+	}
 
 	vkCmdDispatch(commandBuffer, std::ceil(drawExtent.width / 16.0), std::ceil(drawExtent.height / 16.0), 1);
+
+	return SDL_APP_CONTINUE;
 }
 
 void VulkanEngine::DrawImGui(const VkCommandBuffer& commandBuffer, const VkImageView& targetImageView) const {
@@ -1044,7 +1130,7 @@ std::optional<AllocatedImage> VulkanEngine::CreateImage(const VkExtent3D size, c
 	return newImage;
 }
 
-std::optional<AllocatedImage> VulkanEngine::CreateImage(const void* data, const VkExtent3D size, const VkFormat format, const VkImageUsageFlags usage, const bool mipmapped) const {
+std::optional<AllocatedImage> VulkanEngine::CreateImage(const void* data, const VkExtent3D size, const VkFormat format, const VkImageUsageFlags usage, const bool mipmapped, const VkImageLayout finalLayout) const {
 	const size_t dataSize = size.depth * size.width * size.height * 4;
 	const std::optional<AllocatedBuffer> uploadBufferResult = CreateBuffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 	if (!uploadBufferResult.has_value()) {
@@ -1081,7 +1167,7 @@ std::optional<AllocatedImage> VulkanEngine::CreateImage(const void* data, const 
 		// copy the buffer into the image
 		vkCmdCopyBufferToImage(commandBuffer, uploadBuffer.internalBuffer, new_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
 
-		vk_util::TransitionImage(commandBuffer, new_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		vk_util::TransitionImage(commandBuffer, new_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, finalLayout);
 	});
 
 	DestroyBuffer(uploadBuffer);
