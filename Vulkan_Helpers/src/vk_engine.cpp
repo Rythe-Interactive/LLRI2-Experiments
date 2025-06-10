@@ -993,7 +993,7 @@ SDL_AppResult VulkanEngine::DrawBackground(const VkCommandBuffer& commandBuffer)
 				const float r = rand() / static_cast<float>(RAND_MAX);
 				const float g = rand() / static_cast<float>(RAND_MAX);
 				const float b = rand() / static_cast<float>(RAND_MAX);
-				pixels[y * 16 + x] = packUnorm4x8(math::float4(r, g, b, 1.0f));
+				pixels[y * width + x] = packUnorm4x8(math::float4(r, g, b, 1.0f));
 			}
 		}
 		if (const SDL_AppResult res = CreateScreenImage(pixels, width, height); res != SDL_APP_CONTINUE) {
