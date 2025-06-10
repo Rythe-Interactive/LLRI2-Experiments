@@ -1245,7 +1245,7 @@ SDL_AppResult VulkanEngine::Draw() {
 
 	uint32_t swapchainImageIndex;
 	if (const VkResult err = vkAcquireNextImageKHR(device, swapchain, secondInNanoseconds, GetCurrentFrame().swapchainSemaphore, nullptr, &swapchainImageIndex);
-		err == VK_ERROR_OUT_OF_DATE_KHR) {
+		err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR) {
 		resizeRequested = true;
 		ImGui::EndFrame();
 		return SDL_APP_CONTINUE;
@@ -1321,7 +1321,7 @@ SDL_AppResult VulkanEngine::Draw() {
 	};
 
 	if (const VkResult presentResult = vkQueuePresentKHR(graphicsQueue, &presentInfo);
-		presentResult == VK_ERROR_OUT_OF_DATE_KHR) {
+		presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) {
 		resizeRequested = true;
 		return SDL_APP_CONTINUE;
 	} else if (presentResult != VK_SUCCESS) {
