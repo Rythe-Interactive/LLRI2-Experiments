@@ -418,7 +418,7 @@ SDL_AppResult VulkanEngine::InitBackgroundPipelines() {
 	};
 
 	VkPipelineLayout computePipelineLayout;
-	VK_CHECK(vkCreatePipelineLayout(device, &computeLayout, nullptr, &computePipelineLayout), "Couldn't create pipeline layout");
+	VK_CHECK(vkCreatePipelineLayout(device, &computeLayout, nullptr, &computePipelineLayout), "Couldn't create compute pipeline layout");
 
 	const std::filesystem::path compiledShadersPath = GetAssetsDir() / "shaders/compiled/";
 
@@ -464,9 +464,8 @@ SDL_AppResult VulkanEngine::InitBackgroundPipelines() {
 			//default colours
 			.data1 = math::float4{1.0f, 0.0f, 0.0f, 1.0f}, // Red
 			.data2 = math::float4{0.0f, 0.0f, 1.0f, 1.0f}, // Blue
-		}
+		},
 	};
-
 	VK_CHECK(vkCreateComputePipelines(device, nullptr, 1, &computePipelineCreateInfo, nullptr, &gradientEffect.pipeline), "Couldn't create compute pipeline: gradient");
 
 	//reuse the structs we've already made, but with the other shader
@@ -478,7 +477,7 @@ SDL_AppResult VulkanEngine::InitBackgroundPipelines() {
 		.data = ComputePushConstants{
 			//default colours
 			.data1 = math::float4{0.1f, 0.2f, 0.4f, 0.97f}, // Light blue
-		}
+		},
 	};
 	VK_CHECK(vkCreateComputePipelines(device, nullptr, 1, &computePipelineCreateInfo, nullptr, &skyEffect.pipeline), "Couldn't create compute pipeline: sky");
 
