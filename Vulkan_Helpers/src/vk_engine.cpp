@@ -757,7 +757,7 @@ SDL_AppResult VulkanEngine::InitDefaultData() {
 
 	// white
 	const uint32_t white = packUnorm4x8(math::float4(1, 1, 1, 1));
-	const std::optional<AllocatedImage> whiteImageResult = CreateImage(&white, pixelSize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+	const std::optional<AllocatedImage> whiteImageResult = CreateImage(&white, pixelSize, sizeof(uint32_t), VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
 	if (!whiteImageResult.has_value()) {
 		SDL_Log("Couldn't create white image");
 		return SDL_APP_FAILURE;
@@ -766,7 +766,7 @@ SDL_AppResult VulkanEngine::InitDefaultData() {
 
 	// grey
 	const uint32_t grey = packUnorm4x8(math::float4(0.66f, 0.66f, 0.66f, 1));
-	const std::optional<AllocatedImage> greyImageResult = CreateImage(&grey, pixelSize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+	const std::optional<AllocatedImage> greyImageResult = CreateImage(&grey, pixelSize, sizeof(uint32_t), VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
 	if (!greyImageResult.has_value()) {
 		SDL_Log("Couldn't create grey image");
 		return SDL_APP_FAILURE;
@@ -775,7 +775,7 @@ SDL_AppResult VulkanEngine::InitDefaultData() {
 
 	// black
 	const uint32_t black = packUnorm4x8(math::float4(0, 0, 0, 0));
-	const std::optional<AllocatedImage> blackImageResult = CreateImage(&black, pixelSize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+	const std::optional<AllocatedImage> blackImageResult = CreateImage(&black, pixelSize, sizeof(uint32_t), VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
 	if (!blackImageResult.has_value()) {
 		SDL_Log("Couldn't create black image");
 		return SDL_APP_FAILURE;
@@ -790,7 +790,7 @@ SDL_AppResult VulkanEngine::InitDefaultData() {
 			pixels[y * 16 + x] = x % 2 ^ y % 2 ? magenta : black;
 		}
 	}
-	std::optional<AllocatedImage> errorCheckerboardImageResult = CreateImage(pixels.data(), VkExtent3D{16, 16, 1}, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+	std::optional<AllocatedImage> errorCheckerboardImageResult = CreateImage(pixels.data(), VkExtent3D{16, 16, 1}, sizeof(uint32_t), VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
 	if (!errorCheckerboardImageResult.has_value()) {
 		SDL_Log("Couldn't create error checkerboard image");
 		return SDL_APP_FAILURE;
@@ -907,8 +907,8 @@ std::optional<GPUMeshBuffers> VulkanEngine::UploadMesh(std::span<Uint16> indices
 	return newSurface;
 }
 
-SDL_AppResult VulkanEngine::CreateScreenImage(const std::span<uint32_t> pixels, const uint32_t width, const uint32_t height) {
-	const std::optional<AllocatedImage> screenImageResult = CreateImage(pixels.data(), VkExtent3D{width, height, 1}, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_STORAGE_BIT, false, VK_IMAGE_LAYOUT_GENERAL);
+SDL_AppResult VulkanEngine::CreateScreenImage(const void* pixels, const size_t pixelSize, const uint32_t width, const uint32_t height) {
+	const std::optional<AllocatedImage> screenImageResult = CreateImage(pixels, VkExtent3D{width, height, 1}, pixelSize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_STORAGE_BIT, false, VK_IMAGE_LAYOUT_GENERAL);
 	if (!screenImageResult.has_value()) {
 		SDL_Log("Couldn't create screen image");
 		return SDL_APP_FAILURE;
@@ -996,7 +996,7 @@ SDL_AppResult VulkanEngine::DrawBackground(const VkCommandBuffer& commandBuffer)
 				pixels[y * width + x] = packUnorm4x8(math::float4(r, g, b, 1.0f));
 			}
 		}
-		if (const SDL_AppResult res = CreateScreenImage(pixels, width, height); res != SDL_APP_CONTINUE) {
+		if (const SDL_AppResult res = CreateScreenImage(pixels.data(), sizeof(uint32_t), width, height); res != SDL_APP_CONTINUE) {
 			return res;
 		}
 
@@ -1156,8 +1156,8 @@ std::optional<AllocatedImage> VulkanEngine::CreateImage(const VkExtent3D size, c
 	return newImage;
 }
 
-std::optional<AllocatedImage> VulkanEngine::CreateImage(const void* data, const VkExtent3D size, const VkFormat format, const VkImageUsageFlags usage, const bool mipmapped, const VkImageLayout finalLayout) const {
-	const size_t dataSize = size.depth * size.width * size.height * 4;
+std::optional<AllocatedImage> VulkanEngine::CreateImage(const void* data, const VkExtent3D imageSize, const size_t pixelSize, const VkFormat format, const VkImageUsageFlags usage, const bool mipmapped, const VkImageLayout finalLayout) const {
+	const size_t dataSize = imageSize.depth * imageSize.width * imageSize.height * pixelSize;
 	const std::optional<AllocatedBuffer> uploadBufferResult = CreateBuffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 	if (!uploadBufferResult.has_value()) {
 		SDL_Log("Couldn't create upload buffer for image");
@@ -1167,7 +1167,7 @@ std::optional<AllocatedImage> VulkanEngine::CreateImage(const void* data, const 
 
 	memcpy(uploadBuffer.allocationInfo.pMappedData, data, dataSize);
 
-	const std::optional<AllocatedImage> newImageResult = CreateImage(size, format, usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, mipmapped);
+	const std::optional<AllocatedImage> newImageResult = CreateImage(imageSize, format, usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, mipmapped);
 	if (!newImageResult.has_value()) {
 		SDL_Log("Couldn't create image");
 		return std::nullopt;
@@ -1187,7 +1187,7 @@ std::optional<AllocatedImage> VulkanEngine::CreateImage(const void* data, const 
 				.baseArrayLayer = 0,
 				.layerCount = 1,
 			},
-			.imageExtent = size,
+			.imageExtent = imageSize,
 		};
 
 		// copy the buffer into the image

@@ -160,11 +160,11 @@ private:
 
 private:
 	[[nodiscard]] std::optional<AllocatedImage> CreateImage(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false) const;
-	[[nodiscard]] std::optional<AllocatedImage> CreateImage(const void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false, VkImageLayout finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) const;
+	[[nodiscard]] std::optional<AllocatedImage> CreateImage(const void* data, VkExtent3D imageSize, size_t pixelSize, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false, VkImageLayout finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) const;
 	void DestroyImage(const AllocatedImage& allocatedImage) const;
 
 private:
-	SDL_AppResult CreateScreenImage(std::span<uint32_t> pixels, uint32_t width, uint32_t height);
+	SDL_AppResult CreateScreenImage(const void* pixels, size_t pixelSize, uint32_t width, uint32_t height);
 
 public:
 	VulkanEngine(std::string name, bool debugMode);
