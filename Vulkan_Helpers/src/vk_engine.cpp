@@ -16,7 +16,7 @@
 // ReSharper disable CppDFAConstantConditions
 // ReSharper disable CppDFAUnreachableCode
 
-// From https://github.com/g-truc/glm/blob/2d4c4b4dd31fde06cfffad7915c2b3006402322f/glm/detail/func_packing.inl#L67C2-L83C3
+// Adapted from https://github.com/g-truc/glm/blob/2d4c4b4dd31fde06cfffad7915c2b3006402322f/glm/detail/func_packing.inl#L67C2-L83C3
 uint32_t packUnorm4x8(math::float4 const& v) {
 	union {
 		unsigned char in[4];
@@ -397,7 +397,7 @@ SDL_AppResult VulkanEngine::InitDescriptors() {
 	//screen image
 	const uint32_t magenta = packUnorm4x8(math::float4(1, 0, 1, 1));
 	const uint32_t black = packUnorm4x8(math::float4(0, 0, 0, 0));
-	std::array<uint32_t, 16 * 16> pixels; //for 16x16 checkerboard texture
+	std::array<uint32_t, 16 * 16> pixels{}; //for 16x16 checkerboard texture
 	for (int x = 0; x < 16; x++) {
 		for (int y = 0; y < 16; y++) {
 			pixels[y * 16 + x] = x % 2 ^ y % 2 ? magenta : black;
@@ -800,7 +800,7 @@ SDL_AppResult VulkanEngine::InitDefaultData() {
 
 	//checkerboard image
 	const uint32_t magenta = packUnorm4x8(math::float4(1, 0, 1, 1));
-	std::array<uint32_t, 16 * 16> pixels; //for 16x16 checkerboard texture
+	std::array<uint32_t, 16 * 16> pixels{}; //for 16x16 checkerboard texture
 	for (int x = 0; x < 16; x++) {
 		for (int y = 0; y < 16; y++) {
 			pixels[y * 16 + x] = x % 2 ^ y % 2 ? magenta : black;
@@ -1148,7 +1148,7 @@ std::optional<AllocatedImage> VulkanEngine::CreateImage(const void* data, const 
 	}
 	AllocatedImage new_image = newImageResult.value();
 
-	ImmediateSubmit([&](const VkCommandBuffer commandBuffer) {
+	ImmediateSubmit([&](const VkCommandBuffer& commandBuffer) {
 		vk_util::TransitionImage(commandBuffer, new_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 		const VkBufferImageCopy copyRegion = {
@@ -1226,8 +1226,8 @@ SDL_AppResult VulkanEngine::Draw() {
 		return SDL_APP_FAILURE;
 	}
 
-	drawExtent.height = std::min(swapchainExtent.height, drawImage.imageExtent.height) * renderScale;
-	drawExtent.width = std::min(swapchainExtent.width, drawImage.imageExtent.width) * renderScale;
+	drawExtent.height = static_cast<uint32_t>(static_cast<float>(std::min(swapchainExtent.height, drawImage.imageExtent.height)) * renderScale);
+	drawExtent.width = static_cast<uint32_t>(static_cast<float>(std::min(swapchainExtent.width, drawImage.imageExtent.width)) * renderScale);
 
 	VK_CHECK(vkResetFences(device, 1, &GetCurrentFrame().renderFence), "Couldn't reset fence");
 
@@ -1336,7 +1336,7 @@ void VulkanEngine::Cleanup(const SDL_AppResult result) {
 			frame.frameDeletionQueue.Flush();
 		}
 
-		for (const std::shared_ptr mesh : meshes) {
+		for (const std::shared_ptr<MeshAsset>& mesh : meshes) {
 			DestroyBuffer(mesh->meshBuffers.indexBuffer);
 			DestroyBuffer(mesh->meshBuffers.vertexBuffer);
 		}

@@ -36,7 +36,7 @@ public:
 	void ClearPools(const VkDevice& device);
 	void DestroyPools(const VkDevice& device);
 
-	std::optional<VkDescriptorSet> Allocate(const VkDevice& device, VkDescriptorSetLayout layout, const void* pNext = nullptr);
+	std::optional<VkDescriptorSet> Allocate(const VkDevice& device, const VkDescriptorSetLayout& layout, const void* pNext = nullptr);
 
 private:
 	VkDescriptorPool GetPool(const VkDevice& device);
@@ -53,9 +53,9 @@ struct DescriptorWriter {
 	std::deque<VkDescriptorBufferInfo> bufferInfos;
 	std::vector<VkWriteDescriptorSet> writes;
 
-	void WriteImage(uint32_t binding, VkImageView image, VkSampler sampler, VkImageLayout layout, VkDescriptorType type);
-	void WriteBuffer(uint32_t binding, VkBuffer buffer, size_t size, size_t offset, VkDescriptorType type);
+	void WriteImage(uint32_t binding, const VkImageView& image, const VkSampler& sampler, VkImageLayout layout, VkDescriptorType type);
+	void WriteBuffer(uint32_t binding, const VkBuffer& buffer, size_t size, size_t offset, VkDescriptorType type);
 
 	void Clear();
-	void UpdateSet(const VkDevice& device, VkDescriptorSet set);
+	void UpdateSet(const VkDevice& device, const VkDescriptorSet& set);
 };
