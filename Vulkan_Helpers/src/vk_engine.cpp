@@ -1219,7 +1219,7 @@ SDL_AppResult VulkanEngine::Draw() {
 	ImGui_ImplSDL3_NewFrame();
 	ImGui::NewFrame();
 
-	ImGui::ShowDemoWindow();
+	// ImGui::ShowDemoWindow();
 
 	if (ImGui::Begin("Background")) {
 		ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.0f);
