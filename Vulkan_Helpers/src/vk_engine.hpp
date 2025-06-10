@@ -53,6 +53,7 @@ class VulkanEngine {
 	AllocatedImage depthImage = {};
 	VkExtent2D drawExtent = {};
 	float renderScale = 1.0f;
+	VkFilter renderScaleFilter = VK_FILTER_LINEAR;
 
 	bool resizeRequested = false;
 

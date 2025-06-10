@@ -37,7 +37,7 @@ void vk_util::TransitionImage(const VkCommandBuffer& commandBuffer, const VkImag
 	vkCmdPipelineBarrier2(commandBuffer, &depInfo);
 }
 
-void vk_util::CopyImageToImage(const VkCommandBuffer& commandBuffer, const VkImage& source, const VkImage& destination, const VkExtent2D srcSize, const VkExtent2D dstSize) {
+void vk_util::CopyImageToImage(const VkCommandBuffer& commandBuffer, const VkImage& source, const VkImage& destination, const VkExtent2D srcSize, const VkExtent2D dstSize, const VkFilter filter) {
 	VkImageBlit2 blitRegion{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
 		.srcSubresource = VkImageSubresourceLayers{
@@ -70,7 +70,7 @@ void vk_util::CopyImageToImage(const VkCommandBuffer& commandBuffer, const VkIma
 		.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		.regionCount = 1,
 		.pRegions = &blitRegion,
-		.filter = VK_FILTER_LINEAR,
+		.filter = filter,
 	};
 
 	vkCmdBlitImage2(commandBuffer, &blitInfo);

@@ -1195,6 +1195,7 @@ SDL_AppResult VulkanEngine::Draw() {
 
 	if (ImGui::Begin("Background")) {
 		ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.0f);
+		ImGui::SliderInt("Render Scale Filter", reinterpret_cast<int*>(&renderScaleFilter), 0, 1);
 
 		const ComputeEffect& currentEffect = backgroundEffects[currentBackgroundEffectIndex];
 
@@ -1254,7 +1255,7 @@ SDL_AppResult VulkanEngine::Draw() {
 	vk_util::TransitionImage(commandBuffer, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 	// execute a copy from the draw image into the swapchain
-	vk_util::CopyImageToImage(commandBuffer, drawImage.image, swapchainImages[swapchainImageIndex], drawExtent, swapchainExtent);
+	vk_util::CopyImageToImage(commandBuffer, drawImage.image, swapchainImages[swapchainImageIndex], drawExtent, swapchainExtent, renderScaleFilter);
 
 	// set swapchain image layout to Attachment Optimal so we can draw into it from imgui
 	vk_util::TransitionImage(commandBuffer, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
