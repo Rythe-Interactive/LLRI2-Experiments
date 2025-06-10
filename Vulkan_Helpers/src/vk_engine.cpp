@@ -1195,6 +1195,7 @@ SDL_AppResult VulkanEngine::Draw() {
 
 	if (ImGui::Begin("Background")) {
 		ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.0f);
+		renderScale = math::clamp(renderScale, 0.3f, 1.0f); //to prevent manual (typed, not slid) input from going out of bounds
 		ImGui::SliderInt("Render Scale Filter", reinterpret_cast<int*>(&renderScaleFilter), 0, 1);
 
 		const ComputeEffect& currentEffect = backgroundEffects[currentBackgroundEffectIndex];
