@@ -1068,8 +1068,8 @@ SDL_AppResult VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) {
 		ImGui::SliderFloat("Camera Height", &cameraHeight, -20.0f, 20.0f);
 		ImGui::SliderFloat("Camera Rotation Speed", &cameraRotationSpeed, 0.0f, 0.002f);
 		ImGui::SliderFloat("Camera FOV", &cameraFOV, 0.0f, 180.0f);
-		ImGui::End();
 	}
+	ImGui::End();
 
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline);
 
@@ -1235,8 +1235,8 @@ SDL_AppResult VulkanEngine::Draw() {
 		ImGui::InputFloat4("data2", const_cast<float*>(&currentEffect.data.data2.x));
 		ImGui::InputFloat4("data3", const_cast<float*>(&currentEffect.data.data3.x));
 		ImGui::InputFloat4("data4", const_cast<float*>(&currentEffect.data.data4.x));
-		ImGui::End();
 	}
+	ImGui::End();
 
 	VK_CHECK(vkWaitForFences(device, 1, &GetCurrentFrame().renderFence, true, secondInNanoseconds), "Couldn't wait for fence");
 
