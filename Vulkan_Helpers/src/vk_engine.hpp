@@ -37,11 +37,9 @@ class VulkanEngine {
 		DeletionQueue frameDeletionQueue;
 	};
 
-	static constexpr unsigned int FRAME_OVERLAP = 2;
-
 	unsigned int frameNumber = 0;
-	FrameData frames[FRAME_OVERLAP];
-	FrameData& GetCurrentFrame() { return frames[frameNumber % FRAME_OVERLAP]; }
+	std::array<FrameData, 2> frames = {};
+	FrameData& GetCurrentFrame() { return frames[frameNumber % frames.size()]; }
 	VkQueue graphicsQueue = nullptr;
 	uint32_t graphicsQueueFamilyIndex = 0;
 
