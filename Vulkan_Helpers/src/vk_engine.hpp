@@ -36,6 +36,8 @@ class VulkanEngine {
 
 		DeletionQueue frameDeletionQueue;
 		DescriptorAllocatorGrowable frameDescriptors;
+
+		AllocatedImage screenImage = {};
 	};
 
 	unsigned int frameNumber = 0;
@@ -121,7 +123,6 @@ class VulkanEngine {
 
 	VkDescriptorSet screenImageDescriptors = nullptr;
 	VkDescriptorSetLayout screenImageDescriptorLayout = nullptr;
-	AllocatedImage screenImage = {};
 
 private:
 	[[nodiscard]] SDL_AppResult InitVulkan();
@@ -153,7 +154,7 @@ private:
 	void DestroyBuffer(const AllocatedBuffer& buffer) const;
 
 private:
-	[[nodiscard]] SDL_AppResult DrawBackground(const VkCommandBuffer& commandBuffer) const;
+	[[nodiscard]] SDL_AppResult DrawBackground(const VkCommandBuffer& commandBuffer);
 	void DrawImGui(const VkCommandBuffer& commandBuffer, const VkImageView& targetImageView) const;
 	[[nodiscard]] SDL_AppResult DrawGeometry(const VkCommandBuffer& commandBuffer);
 
@@ -161,6 +162,9 @@ private:
 	[[nodiscard]] std::optional<AllocatedImage> CreateImage(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false) const;
 	[[nodiscard]] std::optional<AllocatedImage> CreateImage(const void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false, VkImageLayout finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) const;
 	void DestroyImage(const AllocatedImage& allocatedImage) const;
+
+private:
+	SDL_AppResult CreateScreenImage(std::span<uint32_t> pixels, uint32_t width, uint32_t height);
 
 public:
 	VulkanEngine(std::string name, bool debugMode);

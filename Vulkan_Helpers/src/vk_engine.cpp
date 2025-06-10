@@ -403,13 +403,6 @@ SDL_AppResult VulkanEngine::InitDescriptors() {
 			pixels[y * 16 + x] = x % 2 ^ y % 2 ? magenta : black;
 		}
 	}
-	std::optional<AllocatedImage> screenImageResult = CreateImage(pixels.data(), VkExtent3D{16, 16, 1}, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_STORAGE_BIT, false, VK_IMAGE_LAYOUT_GENERAL);
-	if (!screenImageResult.has_value()) {
-		SDL_Log("Couldn't create screen image");
-		return SDL_APP_FAILURE;
-	}
-	screenImage = screenImageResult.value();
-
 	//allocate a descriptor set for the screen image
 	const std::optional<VkDescriptorSet> screenAllocationResult = globalDescriptorAllocator.Allocate(device, screenImageDescriptorLayout);
 	if (!screenAllocationResult.has_value()) {
@@ -418,19 +411,10 @@ SDL_AppResult VulkanEngine::InitDescriptors() {
 	}
 	screenImageDescriptors = screenAllocationResult.value();
 
-	{
-		DescriptorWriter writer;
-		writer.WriteImage(0, drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-		writer.WriteImage(1, screenImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-		writer.UpdateSet(device, screenImageDescriptors);
-	}
-
-
 	//make sure both the descriptor allocator and the new layout get cleaned up properly
 	mainDeletionQueue.PushFunction([&] {
 		globalDescriptorAllocator.DestroyPool(device);
 
-		DestroyImage(screenImage);
 		vkDestroyDescriptorSetLayout(device, gpuSceneDataDescriptorLayout, nullptr);
 		vkDestroyDescriptorSetLayout(device, singleImageDescriptorLayout, nullptr);
 		vkDestroyDescriptorSetLayout(device, screenImageDescriptorLayout, nullptr);
@@ -923,6 +907,24 @@ std::optional<GPUMeshBuffers> VulkanEngine::UploadMesh(std::span<Uint16> indices
 	return newSurface;
 }
 
+SDL_AppResult VulkanEngine::CreateScreenImage(const std::span<uint32_t> pixels, const uint32_t width, const uint32_t height) {
+	const std::optional<AllocatedImage> screenImageResult = CreateImage(pixels.data(), VkExtent3D{width, height, 1}, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_STORAGE_BIT, false, VK_IMAGE_LAYOUT_GENERAL);
+	if (!screenImageResult.has_value()) {
+		SDL_Log("Couldn't create screen image");
+		return SDL_APP_FAILURE;
+	}
+	GetCurrentFrame().screenImage = screenImageResult.value();
+
+	{
+		DescriptorWriter writer;
+		writer.WriteImage(0, drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+		writer.WriteImage(1, GetCurrentFrame().screenImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+		writer.UpdateSet(device, screenImageDescriptors);
+	}
+
+	return SDL_APP_CONTINUE;
+}
+
 #pragma endregion
 
 VulkanEngine::VulkanEngine(std::string name, const bool debugMode)
@@ -979,7 +981,29 @@ SDL_AppResult VulkanEngine::Init(const int width, const int height) {
 	return SDL_APP_CONTINUE;
 }
 
-SDL_AppResult VulkanEngine::DrawBackground(const VkCommandBuffer& commandBuffer) const {
+SDL_AppResult VulkanEngine::DrawBackground(const VkCommandBuffer& commandBuffer) {
+	if (currentBackgroundEffectIndex == 2) {
+		constexpr uint32_t width = 16;
+		constexpr uint32_t height = 16;
+		//screen image
+		std::array<uint32_t, width * height> pixels{}; //for 16x16 checkerboard texture
+		for (int x = 0; x < width; x++) {
+			for (int y = 0; y < height; y++) {
+				// Random colour
+				const float r = rand() / static_cast<float>(RAND_MAX);
+				const float g = rand() / static_cast<float>(RAND_MAX);
+				const float b = rand() / static_cast<float>(RAND_MAX);
+				pixels[y * 16 + x] = packUnorm4x8(math::float4(r, g, b, 1.0f));
+			}
+		}
+		if (const SDL_AppResult res = CreateScreenImage(pixels, width, height); res != SDL_APP_CONTINUE) {
+			return res;
+		}
+
+		FrameData& currentFrame = GetCurrentFrame();
+		currentFrame.frameDeletionQueue.PushFunction([&] { DestroyImage(currentFrame.screenImage); });
+	}
+
 	const ComputeEffect& currentEffect = backgroundEffects[currentBackgroundEffectIndex];
 
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, currentEffect.pipeline);
