@@ -19,4 +19,4 @@ struct MeshAsset {
 	GPUMeshBuffers meshBuffers;
 };
 
-std::optional<std::vector<std::shared_ptr<MeshAsset>>> ImportMesh(VulkanEngine* engine, const std::filesystem::path& fullPath);
+[[nodiscard]] std::optional<std::vector<std::shared_ptr<MeshAsset>>> ImportMesh(VulkanEngine* engine, const std::filesystem::path& fullPath);

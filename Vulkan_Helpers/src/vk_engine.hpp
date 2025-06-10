@@ -124,42 +124,42 @@ class VulkanEngine {
 	AllocatedImage screenImage = {};
 
 private:
-	SDL_AppResult InitVulkan();
-	SDL_AppResult InitCommands();
-	SDL_AppResult InitSyncStructures();
+	[[nodiscard]] SDL_AppResult InitVulkan();
+	[[nodiscard]] SDL_AppResult InitCommands();
+	[[nodiscard]] SDL_AppResult InitSyncStructures();
 
 private:
-	SDL_AppResult CreateSwapchain(uint32_t width, uint32_t height);
-	SDL_AppResult InitSwapchain();
+	[[nodiscard]] SDL_AppResult CreateSwapchain(uint32_t width, uint32_t height);
+	[[nodiscard]] SDL_AppResult InitSwapchain();
 	void DestroySwapchain() const;
-	SDL_AppResult ResizeSwapchain();
+	[[nodiscard]] SDL_AppResult ResizeSwapchain();
 
 private:
-	SDL_AppResult InitDescriptors();
+	[[nodiscard]] SDL_AppResult InitDescriptors();
 
 private:
-	SDL_AppResult InitPipelines();
-	SDL_AppResult InitBackgroundPipelines();
-	SDL_AppResult InitMeshPipeline();
+	[[nodiscard]] SDL_AppResult InitPipelines();
+	[[nodiscard]] SDL_AppResult InitBackgroundPipelines();
+	[[nodiscard]] SDL_AppResult InitMeshPipeline();
 
 private:
-	SDL_AppResult InitImgui();
+	[[nodiscard]] SDL_AppResult InitImgui();
 
 private:
-	SDL_AppResult InitDefaultData();
+	[[nodiscard]] SDL_AppResult InitDefaultData();
 
 private:
 	[[nodiscard]] std::optional<AllocatedBuffer> CreateBuffer(size_t allocSize, VkBufferUsageFlags bufferUsage, VmaMemoryUsage memoryUsage) const;
 	void DestroyBuffer(const AllocatedBuffer& buffer) const;
 
 private:
-	SDL_AppResult DrawBackground(const VkCommandBuffer& commandBuffer) const;
+	[[nodiscard]] SDL_AppResult DrawBackground(const VkCommandBuffer& commandBuffer) const;
 	void DrawImGui(const VkCommandBuffer& commandBuffer, const VkImageView& targetImageView) const;
-	SDL_AppResult DrawGeometry(const VkCommandBuffer& commandBuffer);
+	[[nodiscard]] SDL_AppResult DrawGeometry(const VkCommandBuffer& commandBuffer);
 
 private:
-	std::optional<AllocatedImage> CreateImage(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false) const;
-	std::optional<AllocatedImage> CreateImage(const void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false, VkImageLayout finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) const;
+	[[nodiscard]] std::optional<AllocatedImage> CreateImage(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false) const;
+	[[nodiscard]] std::optional<AllocatedImage> CreateImage(const void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false, VkImageLayout finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) const;
 	void DestroyImage(const AllocatedImage& allocatedImage) const;
 
 public:
@@ -168,11 +168,11 @@ public:
 	[[nodiscard]] std::filesystem::path GetAssetsDir() const;
 	[[nodiscard]] std::optional<GPUMeshBuffers> UploadMesh(std::span<Uint16> indices, std::span<MyVertex> vertices) const;
 
-	SDL_AppResult Init(int width, int height);
-	SDL_AppResult Draw();
-	SDL_AppResult HandleEvent(const SDL_Event* event);
+	[[nodiscard]] SDL_AppResult Init(int width, int height);
+	[[nodiscard]] SDL_AppResult Draw();
+	[[nodiscard]] SDL_AppResult HandleEvent(const SDL_Event* event);
 	void Cleanup(SDL_AppResult result);
 
 public:
-	SDL_AppResult ImmediateSubmit(std::function<void(VkCommandBuffer commandBuffer)>&& function) const;
+	[[nodiscard]] SDL_AppResult ImmediateSubmit(std::function<void(VkCommandBuffer commandBuffer)>&& function) const;
 };

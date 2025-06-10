@@ -3,7 +3,7 @@
 #include "mass_includer.hpp"
 
 namespace vk_util {
-	std::optional<VkShaderModule> LoadShaderModule(const char* filePath, const VkDevice& device);
+	[[nodiscard]] std::optional<VkShaderModule> LoadShaderModule(const char* filePath, const VkDevice& device);
 };
 
 class PipelineBuilder {
@@ -36,5 +36,5 @@ public:
 	void EnableDepthTest(bool depthWriteEnable, VkCompareOp op);
 	void DisableDepthTest();
 
-	std::optional<VkPipeline> BuildPipeline(const VkDevice& device);
+	[[nodiscard]] std::optional<VkPipeline> BuildPipeline(const VkDevice& device);
 };

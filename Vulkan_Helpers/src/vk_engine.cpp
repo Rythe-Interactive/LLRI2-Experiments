@@ -900,7 +900,7 @@ std::optional<GPUMeshBuffers> VulkanEngine::UploadMesh(std::span<Uint16> indices
 	memcpy(data, vertices.data(), vertexBufferSize); // copy vertex buffer
 	memcpy(static_cast<char*>(data) + vertexBufferSize, indices.data(), indexBufferSize); // copy index buffer
 
-	ImmediateSubmit([&](const VkCommandBuffer& commandBuffer) {
+	if (const SDL_AppResult res = ImmediateSubmit([&](const VkCommandBuffer& commandBuffer) {
 		const VkBufferCopy vertexCopy{
 			.srcOffset = 0,
 			.dstOffset = 0,
@@ -914,7 +914,9 @@ std::optional<GPUMeshBuffers> VulkanEngine::UploadMesh(std::span<Uint16> indices
 			.size = indexBufferSize
 		};
 		vkCmdCopyBuffer(commandBuffer, stagingBuffer.internalBuffer, newSurface.indexBuffer.internalBuffer, 1, &indexCopy);
-	});
+	}); res != SDL_APP_CONTINUE) {
+		return std::nullopt;
+	}
 
 	DestroyBuffer(stagingBuffer);
 
@@ -1148,7 +1150,7 @@ std::optional<AllocatedImage> VulkanEngine::CreateImage(const void* data, const 
 	}
 	AllocatedImage new_image = newImageResult.value();
 
-	ImmediateSubmit([&](const VkCommandBuffer& commandBuffer) {
+	if (const SDL_AppResult res = ImmediateSubmit([&](const VkCommandBuffer& commandBuffer) {
 		vk_util::TransitionImage(commandBuffer, new_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 		const VkBufferImageCopy copyRegion = {
@@ -1168,7 +1170,9 @@ std::optional<AllocatedImage> VulkanEngine::CreateImage(const void* data, const 
 		vkCmdCopyBufferToImage(commandBuffer, uploadBuffer.internalBuffer, new_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
 
 		vk_util::TransitionImage(commandBuffer, new_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, finalLayout);
-	});
+	}); res != SDL_APP_CONTINUE) {
+		return std::nullopt;
+	}
 
 	DestroyBuffer(uploadBuffer);
 
@@ -1244,12 +1248,16 @@ SDL_AppResult VulkanEngine::Draw() {
 	// we will overwrite it all so we don't care about what was the older layout
 	vk_util::TransitionImage(commandBuffer, drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
-	DrawBackground(commandBuffer);
+	if (const SDL_AppResult res = DrawBackground(commandBuffer); res != SDL_APP_CONTINUE) {
+		return res;
+	}
 
 	vk_util::TransitionImage(commandBuffer, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	vk_util::TransitionImage(commandBuffer, depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
-	DrawGeometry(commandBuffer);
+	if (const SDL_AppResult res = DrawGeometry(commandBuffer); res != SDL_APP_CONTINUE) {
+		return res;
+	}
 
 	// transition the draw image and the swapchain image into their correct transfer layouts
 	vk_util::TransitionImage(commandBuffer, drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);

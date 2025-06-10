@@ -32,10 +32,7 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 
 SDL_AppResult SDL_AppIterate(void* appstate) {
 	VulkanEngine* vulkanEngine = static_cast<VulkanEngine*>(appstate);
-
-	vulkanEngine->Draw();
-
-	return SDL_APP_CONTINUE;
+	return vulkanEngine->Draw();
 }
 
 void SDL_AppQuit(void* appstate, const SDL_AppResult result) {
