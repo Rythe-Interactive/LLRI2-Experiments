@@ -12,6 +12,9 @@
 #include "vk_macros.hpp"
 #include "vk_pipelines.hpp"
 
+// ReSharper disable CppDFAConstantParameter
+// ReSharper disable CppDFAConstantConditions
+// ReSharper disable CppDFAUnreachableCode
 #pragma region Vulkan Initialization
 
 SDL_AppResult VulkanEngine::InitVulkan() {
@@ -322,10 +325,30 @@ SDL_AppResult VulkanEngine::InitDescriptors() {
 		builder.AddBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
 		const std::optional<VkDescriptorSetLayout> buildResult = builder.Build(device, VK_SHADER_STAGE_COMPUTE_BIT);
 		if (!buildResult.has_value()) {
-			SDL_Log("Couldn't create descriptor set layout for draw image");
+			SDL_Log("Couldn't create descriptor set layout for compute draw image");
 			return SDL_APP_FAILURE;
 		}
 		drawImageDescriptorLayout = buildResult.value();
+	}
+	{
+		DescriptorLayoutBuilder builder;
+		builder.AddBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		const std::optional<VkDescriptorSetLayout> buildResult = builder.Build(device, VK_SHADER_STAGE_FRAGMENT_BIT);
+		if (!buildResult.has_value()) {
+			SDL_Log("Couldn't create descriptor set layout for single image");
+			return SDL_APP_FAILURE;
+		}
+		singleImageDescriptorLayout = buildResult.value();
+	}
+	{
+		DescriptorLayoutBuilder builder;
+		builder.AddBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+		const std::optional<VkDescriptorSetLayout> buildResult = builder.Build(device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+		if (!buildResult.has_value()) {
+			SDL_Log("Couldn't create descriptor set layout for GPU scene data");
+			return SDL_APP_FAILURE;
+		}
+		gpuSceneDataDescriptorLayout = buildResult.value();
 	}
 
 	//allocate a descriptor set for our draw image
@@ -336,27 +359,34 @@ SDL_AppResult VulkanEngine::InitDescriptors() {
 	}
 	drawImageDescriptors = allocationResult.value();
 
-	VkDescriptorImageInfo imgInfo{
-		.imageView = drawImage.imageView,
-		.imageLayout = VK_IMAGE_LAYOUT_GENERAL,
-	};
-
-	const VkWriteDescriptorSet drawImageWrite = {
-		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-		.dstSet = drawImageDescriptors,
-		.dstBinding = 0,
-		.descriptorCount = 1,
-		.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-		.pImageInfo = &imgInfo,
-	};
-
-	vkUpdateDescriptorSets(device, 1, &drawImageWrite, 0, nullptr);
+	{
+		DescriptorWriter writer;
+		writer.WriteImage(0, drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+		writer.UpdateSet(device, drawImageDescriptors);
+	}
 
 	//make sure both the descriptor allocator and the new layout get cleaned up properly
 	mainDeletionQueue.PushFunction([&] {
 		globalDescriptorAllocator.DestroyPool(device);
+
+		vkDestroyDescriptorSetLayout(device, gpuSceneDataDescriptorLayout, nullptr);
+		vkDestroyDescriptorSetLayout(device, singleImageDescriptorLayout, nullptr);
 		vkDestroyDescriptorSetLayout(device, drawImageDescriptorLayout, nullptr);
 	});
+
+	for (FrameData& frame : frames) {
+		std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> frameSizes = {
+			{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3},
+			{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3},
+			{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3},
+			{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4},
+		};
+
+		frame.frameDescriptors = DescriptorAllocatorGrowable{};
+		frame.frameDescriptors.InitPools(device, 1000, frameSizes);
+
+		mainDeletionQueue.PushFunction([&, frame = &frame] { frame->frameDescriptors.DestroyPools(device); });
+	}
 
 	return SDL_APP_CONTINUE;
 }
@@ -472,7 +502,7 @@ SDL_AppResult VulkanEngine::InitBackgroundPipelines() {
 SDL_AppResult VulkanEngine::InitMeshPipeline() {
 	VkShaderModule meshFragShader;
 	{
-		const std::filesystem::path fullPath = GetAssetsDir() / "shaders/compiled/" / "triangle.frag.spv";
+		const std::filesystem::path fullPath = GetAssetsDir() / "shaders/compiled/" / "tex_image.frag.spv";
 		if (const std::optional<VkShaderModule> meshFragShaderResult = vk_util::LoadShaderModule(fullPath.string().c_str(), device); !meshFragShaderResult.has_value()) {
 			SDL_Log("Couldn't load mesh fragment shader module");
 			return SDL_APP_FAILURE;
@@ -498,7 +528,7 @@ SDL_AppResult VulkanEngine::InitMeshPipeline() {
 		.size = sizeof(GPUDrawPushConstants),
 	};
 
-	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = vk_init::PipelineLayoutCreateInfo(&bufferRange);
+	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = vk_init::PipelineLayoutCreateInfo(&bufferRange, &singleImageDescriptorLayout);
 	VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, nullptr, &meshPipelineLayout), "Couldn't create mesh pipeline layout");
 
 	PipelineBuilder pipelineBuilder;
@@ -630,6 +660,23 @@ SDL_AppResult VulkanEngine::InitImgui() {
 	return SDL_APP_CONTINUE;
 }
 
+// From https://github.com/g-truc/glm/blob/2d4c4b4dd31fde06cfffad7915c2b3006402322f/glm/detail/func_packing.inl#L67C2-L83C3
+uint32_t packUnorm4x8(math::float4 const& v) {
+	union {
+		unsigned char in[4];
+		uint out;
+	} u;
+
+	math::float4 result = round(clamp(v, 0.0f, 1.0f) * 255.0f);
+
+	u.in[0] = result[0];
+	u.in[1] = result[1];
+	u.in[2] = result[2];
+	u.in[3] = result[3];
+
+	return u.out;
+}
+
 SDL_AppResult VulkanEngine::InitDefaultData() {
 	const std::filesystem::path fullPath = GetAssetsDir() / "models/suzanne/suzanne.obj";
 	// const std::filesystem::path fullPath = GetAssetsDir() / "models/container/blender_quad.obj";
@@ -639,6 +686,70 @@ SDL_AppResult VulkanEngine::InitDefaultData() {
 		return SDL_APP_FAILURE;
 	}
 	meshes = std::move(meshResult.value());
+
+	//3 default textures, white, grey, black. 1 pixel each
+	constexpr VkExtent3D pixelSize{1, 1, 1};
+
+	// white
+	const uint32_t white = packUnorm4x8(math::float4(1, 1, 1, 1));
+	const std::optional<AllocatedImage> whiteImageResult = CreateImage(&white, pixelSize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+	if (!whiteImageResult.has_value()) {
+		SDL_Log("Couldn't create white image");
+		return SDL_APP_FAILURE;
+	}
+	whiteImage = whiteImageResult.value();
+
+	// grey
+	const uint32_t grey = packUnorm4x8(math::float4(0.66f, 0.66f, 0.66f, 1));
+	const std::optional<AllocatedImage> greyImageResult = CreateImage(&grey, pixelSize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+	if (!greyImageResult.has_value()) {
+		SDL_Log("Couldn't create grey image");
+		return SDL_APP_FAILURE;
+	}
+	greyImage = greyImageResult.value();
+
+	// black
+	const uint32_t black = packUnorm4x8(math::float4(0, 0, 0, 0));
+	const std::optional<AllocatedImage> blackImageResult = CreateImage(&black, pixelSize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+	if (!blackImageResult.has_value()) {
+		SDL_Log("Couldn't create black image");
+		return SDL_APP_FAILURE;
+	}
+	blackImage = blackImageResult.value();
+
+	//checkerboard image
+	uint32_t magenta = packUnorm4x8(math::float4(1, 0, 1, 1));
+	std::array<uint32_t, 16 * 16> pixels; //for 16x16 checkerboard texture
+	for (int x = 0; x < 16; x++) {
+		for (int y = 0; y < 16; y++) {
+			pixels[y * 16 + x] = x % 2 ^ y % 2 ? magenta : black;
+		}
+	}
+	std::optional<AllocatedImage> errorCheckerboardImageResult = CreateImage(pixels.data(), VkExtent3D{16, 16, 1}, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+	if (!errorCheckerboardImageResult.has_value()) {
+		SDL_Log("Couldn't create error checkerboard image");
+		return SDL_APP_FAILURE;
+	}
+	errorCheckerboardImage = errorCheckerboardImageResult.value();
+
+	VkSamplerCreateInfo sampler = {.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,};
+
+	sampler.magFilter = VK_FILTER_NEAREST;
+	sampler.minFilter = VK_FILTER_NEAREST;
+	vkCreateSampler(device, &sampler, nullptr, &defaultSamplerNearest);
+
+	sampler.magFilter = VK_FILTER_LINEAR;
+	sampler.minFilter = VK_FILTER_LINEAR;
+	vkCreateSampler(device, &sampler, nullptr, &defaultSamplerLinear);
+	mainDeletionQueue.PushFunction([&] {
+		vkDestroySampler(device, defaultSamplerNearest, nullptr);
+		vkDestroySampler(device, defaultSamplerLinear, nullptr);
+
+		DestroyImage(whiteImage);
+		DestroyImage(greyImage);
+		DestroyImage(blackImage);
+		DestroyImage(errorCheckerboardImage);
+	});
 
 	return SDL_APP_CONTINUE;
 }
@@ -808,15 +919,13 @@ void VulkanEngine::DrawImGui(const VkCommandBuffer& commandBuffer, const VkImage
 	vkCmdEndRendering(commandBuffer);
 }
 
-void VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) const {
+SDL_AppResult VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) {
 	//begin a render pass  connected to our draw image
 	const VkRenderingAttachmentInfo colorAttachment = vk_init::AttachmentInfo(drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL);
 	const VkRenderingAttachmentInfo depthAttachment = vk_init::DepthAttachmentInfo(depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
 	const VkRenderingInfo renderInfo = vk_init::RenderingInfo(drawExtent, &colorAttachment, &depthAttachment);
 	vkCmdBeginRendering(commandBuffer, &renderInfo);
-
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline);
 
 	//set dynamic viewport and scissor
 	const VkViewport viewport{
@@ -844,12 +953,29 @@ void VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) const {
 	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
 	if (ImGui::Begin("Camera")) {
-		ImGui::SliderFloat("Camera Radius", const_cast<float*>(&cameraRadius), -20.0f, 20.0f);
-		ImGui::SliderFloat("Camera Height", const_cast<float*>(&cameraHeight), -20.0f, 20.0f);
-		ImGui::SliderFloat("Camera Rotation Speed", const_cast<float*>(&cameraRotationSpeed), 0.0f, 0.002f);
-		ImGui::SliderFloat("Camera FOV", const_cast<float*>(&cameraFOV), 0.0f, 180.0f);
+		ImGui::SliderFloat("Camera Radius", &cameraRadius, -20.0f, 20.0f);
+		ImGui::SliderFloat("Camera Height", &cameraHeight, -20.0f, 20.0f);
+		ImGui::SliderFloat("Camera Rotation Speed", &cameraRotationSpeed, 0.0f, 0.002f);
+		ImGui::SliderFloat("Camera FOV", &cameraFOV, 0.0f, 180.0f);
 		ImGui::End();
 	}
+
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline);
+
+	//bind a texture
+	std::optional<VkDescriptorSet> imageSetResult = GetCurrentFrame().frameDescriptors.Allocate(device, singleImageDescriptorLayout);
+	if (!imageSetResult.has_value()) {
+		SDL_Log("Couldn't allocate descriptor set for image");
+		return SDL_APP_FAILURE;
+	}
+	VkDescriptorSet imageSet = imageSetResult.value();
+	{
+		DescriptorWriter writer;
+		writer.WriteImage(0, errorCheckerboardImage.imageView, defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		writer.UpdateSet(device, imageSet);
+	}
+
+	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipelineLayout, 0, 1, &imageSet, 0, nullptr);
 
 	// > View Matrix
 	float camX = sinf(static_cast<float>(SDL_GetTicks()) * cameraRotationSpeed) * cameraRadius;
@@ -881,6 +1007,92 @@ void VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) const {
 
 
 	vkCmdEndRendering(commandBuffer);
+
+	return SDL_APP_CONTINUE;
+}
+
+std::optional<AllocatedImage> VulkanEngine::CreateImage(const VkExtent3D size, const VkFormat format, const VkImageUsageFlags usage, const bool mipmapped) const {
+	AllocatedImage newImage{
+		.imageExtent = size,
+		.imageFormat = format,
+	};
+
+	VkImageCreateInfo imageCreateInfo = vk_init::ImageCreateInfo(format, usage, size);
+	if (mipmapped) {
+		imageCreateInfo.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(size.width, size.height)))) + 1;
+	}
+
+	// always allocate images on dedicated GPU memory
+	constexpr VmaAllocationCreateInfo allocationCreateInfo{
+		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
+		.requiredFlags = VkMemoryPropertyFlags{VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT},
+	};
+	// allocate and create the image
+	VK_CHECK_EMPTY_OPTIONAL(vmaCreateImage(vmaAllocator, &imageCreateInfo, &allocationCreateInfo, &newImage.image, &newImage.allocation, nullptr), "Failed to create image");
+
+	// if the format is a depth format, we will need to have it use the correct aspect flag
+	VkImageAspectFlags aspectFlag = VK_IMAGE_ASPECT_COLOR_BIT;
+	if (format == VK_FORMAT_D32_SFLOAT) {
+		aspectFlag = VK_IMAGE_ASPECT_DEPTH_BIT;
+	}
+
+	// build an image-view for the image
+	VkImageViewCreateInfo viewCreateInfo = vk_init::ImageViewCreateInfo(format, newImage.image, aspectFlag);
+	viewCreateInfo.subresourceRange.levelCount = imageCreateInfo.mipLevels;
+
+	VK_CHECK_EMPTY_OPTIONAL(vkCreateImageView(device, &viewCreateInfo, nullptr, &newImage.imageView), "Couldn't create image view");
+
+	return newImage;
+}
+
+std::optional<AllocatedImage> VulkanEngine::CreateImage(const void* data, const VkExtent3D size, const VkFormat format, const VkImageUsageFlags usage, const bool mipmapped) const {
+	const size_t dataSize = size.depth * size.width * size.height * 4;
+	const std::optional<AllocatedBuffer> uploadBufferResult = CreateBuffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	if (!uploadBufferResult.has_value()) {
+		SDL_Log("Couldn't create upload buffer for image");
+		return std::nullopt;
+	}
+	const AllocatedBuffer uploadBuffer = uploadBufferResult.value();
+
+	memcpy(uploadBuffer.allocationInfo.pMappedData, data, dataSize);
+
+	const std::optional<AllocatedImage> newImageResult = CreateImage(size, format, usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, mipmapped);
+	if (!newImageResult.has_value()) {
+		SDL_Log("Couldn't create image");
+		return std::nullopt;
+	}
+	AllocatedImage new_image = newImageResult.value();
+
+	ImmediateSubmit([&](const VkCommandBuffer commandBuffer) {
+		vk_util::TransitionImage(commandBuffer, new_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+		const VkBufferImageCopy copyRegion = {
+			.bufferOffset = 0,
+			.bufferRowLength = 0,
+			.bufferImageHeight = 0,
+			.imageSubresource = VkImageSubresourceLayers{
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel = 0,
+				.baseArrayLayer = 0,
+				.layerCount = 1,
+			},
+			.imageExtent = size,
+		};
+
+		// copy the buffer into the image
+		vkCmdCopyBufferToImage(commandBuffer, uploadBuffer.internalBuffer, new_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+
+		vk_util::TransitionImage(commandBuffer, new_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	});
+
+	DestroyBuffer(uploadBuffer);
+
+	return new_image;
+}
+
+void VulkanEngine::DestroyImage(const AllocatedImage& allocatedImage) const {
+	vkDestroyImageView(device, allocatedImage.imageView, nullptr);
+	vmaDestroyImage(vmaAllocator, allocatedImage.image, allocatedImage.allocation);
 }
 
 SDL_AppResult VulkanEngine::Draw() {
@@ -914,6 +1126,7 @@ SDL_AppResult VulkanEngine::Draw() {
 	VK_CHECK(vkWaitForFences(device, 1, &GetCurrentFrame().renderFence, true, secondInNanoseconds), "Couldn't wait for fence");
 
 	GetCurrentFrame().frameDeletionQueue.Flush();
+	GetCurrentFrame().frameDescriptors.ClearPools(device);
 
 	uint32_t swapchainImageIndex;
 	if (const VkResult err = vkAcquireNextImageKHR(device, swapchain, secondInNanoseconds, GetCurrentFrame().swapchainSemaphore, nullptr, &swapchainImageIndex);

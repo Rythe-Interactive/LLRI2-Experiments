@@ -35,6 +35,7 @@ class VulkanEngine {
 		VkFence renderFence = nullptr;
 
 		DeletionQueue frameDeletionQueue;
+		DescriptorAllocatorGrowable frameDescriptors;
 	};
 
 	unsigned int frameNumber = 0;
@@ -93,6 +94,28 @@ class VulkanEngine {
 	float cameraRotationSpeed = 0.001f;
 	float cameraFOV = 45.0f;
 
+	struct GPUSceneData {
+		math::float4x4 view;
+		math::float4x4 proj;
+		math::float4x4 viewProj;
+		math::float4 ambientColour;
+		math::float4 sunlightDirection; //w is the sun's power
+		math::float4 sunlightColour;
+	};
+
+	GPUSceneData sceneData;
+	VkDescriptorSetLayout gpuSceneDataDescriptorLayout = nullptr;
+
+	AllocatedImage whiteImage = {};
+	AllocatedImage blackImage = {};
+	AllocatedImage greyImage = {};
+	AllocatedImage errorCheckerboardImage = {};
+
+	VkSampler defaultSamplerLinear = nullptr;
+	VkSampler defaultSamplerNearest = nullptr;
+
+	VkDescriptorSetLayout singleImageDescriptorLayout = nullptr;
+
 private:
 	SDL_AppResult InitVulkan();
 	SDL_AppResult InitCommands();
@@ -125,7 +148,12 @@ private:
 private:
 	void DrawBackground(const VkCommandBuffer& commandBuffer) const;
 	void DrawImGui(const VkCommandBuffer& commandBuffer, const VkImageView& targetImageView) const;
-	void DrawGeometry(const VkCommandBuffer& commandBuffer) const;
+	SDL_AppResult DrawGeometry(const VkCommandBuffer& commandBuffer);
+
+private:
+	std::optional<AllocatedImage> CreateImage(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false) const;
+	std::optional<AllocatedImage> CreateImage(const void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false) const;
+	void DestroyImage(const AllocatedImage& allocatedImage) const;
 
 public:
 	VulkanEngine(std::string name, bool debugMode);
