@@ -1276,7 +1276,7 @@ SDL_AppResult VulkanEngine::Draw() {
 		ImGui::InputFloat4("data4", const_cast<float*>(&currentEffect.data.data4.x));
 
 		ImGui::Text("Monkey Texture: %s", meshes[selectedMeshIndex]->texturePath.string().c_str());
-		ImGui::SliderInt("Selected Texture", &selectedTextureIndex, 0, images.size() - 1);
+		ImGui::SliderInt("Selected Texture", &selectedTextureIndex, 0, static_cast<int>(images.size()) - 1);
 	}
 	ImGui::End();
 
