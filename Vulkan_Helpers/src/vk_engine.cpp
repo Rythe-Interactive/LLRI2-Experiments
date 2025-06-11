@@ -21,9 +21,9 @@ uint32_t packUnorm4x8(math::float4 const& v) {
 	union {
 		unsigned char in[4];
 		uint out;
-	} u;
+	} u{};
 
-	math::float4 result = round(clamp(v, 0.0f, 1.0f) * 255.0f);
+	math::vector<unsigned char, 4> result = round(clamp(v, 0.0f, 1.0f) * 255.0f);
 
 	u.in[0] = result[0];
 	u.in[1] = result[1];
