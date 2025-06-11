@@ -989,10 +989,10 @@ SDL_AppResult VulkanEngine::DrawBackground(const VkCommandBuffer& commandBuffer)
 		std::array<uint32_t, width * height> pixels{}; //for 16x16 checkerboard texture
 		for (int x = 0; x < width; x++) {
 			for (int y = 0; y < height; y++) {
-				// Random colour
-				const float r = rand() / static_cast<float>(RAND_MAX);
-				const float g = rand() / static_cast<float>(RAND_MAX);
-				const float b = rand() / static_cast<float>(RAND_MAX);
+				// Random colour (rand() is fine enough)
+				const float r = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); // NOLINT(*-msc50-cpp)
+				const float g = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); // NOLINT(*-msc50-cpp)
+				const float b = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); // NOLINT(*-msc50-cpp)
 				pixels[y * width + x] = packUnorm4x8(math::float4(r, g, b, 1.0f));
 			}
 		}
