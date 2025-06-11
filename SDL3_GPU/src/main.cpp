@@ -500,7 +500,7 @@ SDL_AppResult SDL_AppInit(void** appstate, [[maybe_unused]] int argc, [[maybe_un
 }
 
 // ReSharper disable once CppParameterMayBeConstPtrOrRef
-SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
+SDL_AppResult SDL_AppEvent([[maybe_unused]] void* appstate, SDL_Event* event) {
 	switch (event->type) {
 		case SDL_EVENT_QUIT:
 			return SDL_APP_SUCCESS; // end the program, reporting success to the OS.
@@ -611,7 +611,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 	return SDL_APP_CONTINUE;
 }
 
-void SDL_AppQuit(void* appstate, SDL_AppResult result) {
+void SDL_AppQuit(void* appstate, [[maybe_unused]] SDL_AppResult result) {
 	const MyAppState* myAppState = static_cast<MyAppState*>(appstate);
 
 	SDL_ReleaseGPUGraphicsPipeline(myAppState->device, myAppState->pipeline);
