@@ -795,6 +795,20 @@ SDL_AppResult VulkanEngine::InitDefaultData() {
 	}
 	errorCheckerboardImage = errorCheckerboardImageResult.value();
 
+	//image texture
+	SDL_Surface* imageData = LoadImage(meshes[selectedMeshIndex]->texturePath, 4);
+	if (imageData == nullptr) {
+		SDL_Log("Couldn't load image data!");
+		return SDL_APP_FAILURE;
+	}
+	std::optional<AllocatedImage> imageTextureResult = CreateImage(imageData->pixels, VkExtent3D{static_cast<uint32_t>(imageData->w), static_cast<uint32_t>(imageData->h), 1}, sizeof(uint32_t), VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+	if (!errorCheckerboardImageResult.has_value()) {
+		SDL_Log("Couldn't create error checkerboard image");
+		return SDL_APP_FAILURE;
+	}
+	imageTexture = imageTextureResult.value();
+	SDL_DestroySurface(imageData);
+
 	VkSamplerCreateInfo sampler = {.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,};
 
 	sampler.magFilter = VK_FILTER_NEAREST;
@@ -812,6 +826,7 @@ SDL_AppResult VulkanEngine::InitDefaultData() {
 		DestroyImage(greyImage);
 		DestroyImage(blackImage);
 		DestroyImage(errorCheckerboardImage);
+		DestroyImage(imageTexture);
 	});
 
 	return SDL_APP_CONTINUE;
@@ -933,6 +948,32 @@ VulkanEngine::VulkanEngine(std::string name, const bool debugMode)
 std::filesystem::path VulkanEngine::GetAssetsDir() const {
 	const std::filesystem::path assetsDirName = name + "-assets";
 	return SDL_GetBasePath() / assetsDirName;
+}
+
+SDL_Surface* VulkanEngine::LoadImage(const std::filesystem::path& imagePath, const int desiredChannels) const {
+	const std::filesystem::path fullPath = GetAssetsDir() / imagePath;
+
+	SDL_Surface* result = SDL_LoadBMP(fullPath.string().c_str());
+	if (result == nullptr) {
+		SDL_Log("Couldn't load BMP: %s", SDL_GetError());
+		return nullptr;
+	}
+
+	SDL_PixelFormat format;
+	if (desiredChannels == 4) {
+		format = SDL_PIXELFORMAT_ABGR8888;
+	} else {
+		SDL_assert(!"Unexpected desiredChannels");
+		SDL_DestroySurface(result);
+		return nullptr;
+	}
+	if (result->format != format) {
+		SDL_Surface* next = SDL_ConvertSurface(result, format);
+		SDL_DestroySurface(result);
+		result = next;
+	}
+
+	return result;
 }
 
 SDL_AppResult VulkanEngine::Init(const int width, const int height) {
@@ -1080,7 +1121,7 @@ SDL_AppResult VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) {
 	VkDescriptorSet imageSet = imageSetResult.value();
 	{
 		DescriptorWriter writer;
-		writer.WriteImage(0, errorCheckerboardImage.imageView, defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		writer.WriteImage(0, images[selectedTextureIndex]->imageView, defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 		writer.UpdateSet(device, imageSet);
 	}
 
@@ -1106,13 +1147,13 @@ SDL_AppResult VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) {
 
 	const GPUDrawPushConstants pushConstants{
 		.worldMatrix = view * projection,
-		.vertexBufferAddress = meshes[0]->meshBuffers.vertexBufferAddress,
+		.vertexBufferAddress = meshes[selectedMeshIndex]->meshBuffers.vertexBufferAddress,
 	};
 
 	vkCmdPushConstants(commandBuffer, meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
-	vkCmdBindIndexBuffer(commandBuffer, meshes[0]->meshBuffers.indexBuffer.internalBuffer, 0, VK_INDEX_TYPE_UINT16);
+	vkCmdBindIndexBuffer(commandBuffer, meshes[selectedMeshIndex]->meshBuffers.indexBuffer.internalBuffer, 0, VK_INDEX_TYPE_UINT16);
 
-	vkCmdDrawIndexed(commandBuffer, meshes[0]->surfaces[0].count, 1, meshes[0]->surfaces[0].startIndex, 0, 0);
+	vkCmdDrawIndexed(commandBuffer, meshes[selectedMeshIndex]->surfaces[0].count, 1, meshes[selectedMeshIndex]->surfaces[0].startIndex, 0, 0);
 
 
 	vkCmdEndRendering(commandBuffer);
@@ -1233,6 +1274,9 @@ SDL_AppResult VulkanEngine::Draw() {
 		ImGui::InputFloat4("data2", const_cast<float*>(&currentEffect.data.data2.x));
 		ImGui::InputFloat4("data3", const_cast<float*>(&currentEffect.data.data3.x));
 		ImGui::InputFloat4("data4", const_cast<float*>(&currentEffect.data.data4.x));
+
+		ImGui::Text("Monkey Texture: %s", meshes[selectedMeshIndex]->texturePath.string().c_str());
+		ImGui::SliderInt("Selected Texture", &selectedTextureIndex, 0, images.size() - 1);
 	}
 	ImGui::End();
 

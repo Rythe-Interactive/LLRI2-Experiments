@@ -84,6 +84,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> ImportMesh(VulkanEngine* 
 		SDL_Log("Assimp path: %s", assimpPath->C_Str());
 		std::filesystem::path texturePath = fullPath.parent_path() / assimpPath->C_Str();
 		delete assimpPath;
+		newMesh.texturePath = std::move(texturePath);
 
 		newMesh.surfaces.push_back(newSurface);
 

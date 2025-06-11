@@ -14,6 +14,7 @@ struct GeoSurface {
 
 struct MeshAsset {
 	std::string name;
+	std::filesystem::path texturePath;
 
 	std::vector<GeoSurface> surfaces;
 	GPUMeshBuffers meshBuffers;

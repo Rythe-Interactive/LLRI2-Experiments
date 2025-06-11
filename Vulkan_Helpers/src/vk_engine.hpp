@@ -68,6 +68,7 @@ class VulkanEngine {
 	VkPipelineLayout meshPipelineLayout = nullptr;
 
 	std::vector<std::shared_ptr<MeshAsset>> meshes;
+	static constexpr int selectedMeshIndex = 0;
 
 	//Immediate Submit
 	VkFence immediateSubmitFence = nullptr;
@@ -115,6 +116,9 @@ class VulkanEngine {
 	AllocatedImage blackImage = {};
 	AllocatedImage greyImage = {};
 	AllocatedImage errorCheckerboardImage = {};
+	AllocatedImage imageTexture = {};
+	int selectedTextureIndex = 3;
+	std::array<AllocatedImage*, 5> images = {&whiteImage, &blackImage, &greyImage, &errorCheckerboardImage, &imageTexture};
 
 	VkSampler defaultSamplerLinear = nullptr;
 	VkSampler defaultSamplerNearest = nullptr;
@@ -170,6 +174,9 @@ public:
 	VulkanEngine(std::string name, bool debugMode);
 
 	[[nodiscard]] std::filesystem::path GetAssetsDir() const;
+	/// @param imagePath Path to image file, relative from the directory where the application was run from.
+	/// @param desiredChannels Colour channels of the image to load.
+	[[nodiscard]] SDL_Surface* LoadImage(const std::filesystem::path& imagePath, int desiredChannels) const;
 	[[nodiscard]] std::optional<GPUMeshBuffers> UploadMesh(std::span<Uint16> indices, std::span<MyVertex> vertices) const;
 
 	[[nodiscard]] SDL_AppResult Init(int width, int height);
