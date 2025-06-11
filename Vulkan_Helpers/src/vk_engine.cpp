@@ -731,8 +731,6 @@ SDL_AppResult VulkanEngine::InitImgui() {
 
 	ImGui_ImplVulkan_Init(&imguiVulkanInitInfo);
 
-	ImGui_ImplVulkan_CreateFontsTexture();
-
 	// destroy the imgui created structures
 	mainDeletionQueue.PushFunction([=, this] {
 		ImGui_ImplVulkan_Shutdown();
