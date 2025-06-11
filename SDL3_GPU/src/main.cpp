@@ -80,6 +80,8 @@ struct MyAppState {
 	SDL_Window* window = nullptr;
 	SDL_GPUDevice* device = nullptr;
 	SDL_GPUGraphicsPipeline* pipeline = nullptr;
+	SDL_GPUTexture* depthTexture = nullptr;
+	math::uint2 depthTextureSize = {0, 0};
 	SDL_GPUBuffer* vertexBuffer = nullptr;
 	SDL_GPUBuffer* indexBuffer = nullptr;
 	SDL_GPUTexture* texture = nullptr;
@@ -237,6 +239,21 @@ std::optional<MyMesh> ImportMesh(const std::filesystem::path& meshPath) {
 	};
 }
 
+void CreateDepthTexture(const math::uint2& newSize, MyAppState* myAppState) {
+	myAppState->depthTextureSize = newSize;
+	const SDL_GPUTextureCreateInfo depthTextureCreateInfo = SDL_GPUTextureCreateInfo{
+		.type = SDL_GPU_TEXTURETYPE_2D,
+		.format = SDL_GPU_TEXTUREFORMAT_D16_UNORM,
+		.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
+		.width = newSize.x,
+		.height = newSize.y,
+		.layer_count_or_depth = 1,
+		.num_levels = 1,
+		.sample_count = SDL_GPU_SAMPLECOUNT_1,
+	};
+	myAppState->depthTexture = SDL_CreateGPUTexture(myAppState->device, &depthTextureCreateInfo);
+}
+
 // ReSharper disable twice CppParameterNeverUsed
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	MyAppState* myAppState = new MyAppState();
@@ -337,9 +354,18 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 		.rasterizer_state = SDL_GPURasterizerState{
 			.fill_mode = SDL_GPU_FILLMODE_FILL,
 		},
+		.depth_stencil_state = SDL_GPUDepthStencilState{
+			.compare_op = SDL_GPU_COMPAREOP_LESS,
+			.write_mask = 0xFF,
+			.enable_depth_test = true,
+			.enable_depth_write = true,
+			.enable_stencil_test = false,
+		},
 		.target_info = SDL_GPUGraphicsPipelineTargetInfo{
 			.color_target_descriptions = colourTargetDescriptions,
 			.num_color_targets = 1,
+			.depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D16_UNORM,
+			.has_depth_stencil_target = true,
 		},
 	};
 
@@ -351,6 +377,11 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 
 	SDL_ReleaseGPUShader(myAppState->device, vertexShader);
 	SDL_ReleaseGPUShader(myAppState->device, fragmentShader);
+
+	// Depth Texture
+	math::int2 screenSize;
+	SDL_GetWindowSize(myAppState->window, &screenSize.x, &screenSize.y);
+	CreateDepthTexture(screenSize, myAppState);
 
 	// (Texture) Sampler
 	SDL_GPUSamplerCreateInfo samplerCreateInfo = SDL_GPUSamplerCreateInfo{
@@ -484,7 +515,7 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 }
 
 SDL_AppResult SDL_AppIterate(void* appstate) {
-	const MyAppState* myAppState = static_cast<MyAppState*>(appstate);
+	MyAppState* myAppState = static_cast<MyAppState*>(appstate);
 
 	SDL_GPUCommandBuffer* commandBuffer = SDL_AcquireGPUCommandBuffer(myAppState->device);
 	if (commandBuffer == nullptr) {
@@ -493,7 +524,8 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 	}
 
 	SDL_GPUTexture* swapchainTexture;
-	if (!SDL_WaitAndAcquireGPUSwapchainTexture(commandBuffer, myAppState->window, &swapchainTexture, nullptr, nullptr)) {
+	math::uint2 swapchainSize{};
+	if (!SDL_WaitAndAcquireGPUSwapchainTexture(commandBuffer, myAppState->window, &swapchainTexture, &swapchainSize.x, &swapchainSize.y)) {
 		SDL_Log("Couldn't WaitAndAcquireGPUSwapchainTexture: %s", SDL_GetError());
 		return SDL_APP_FAILURE;
 	}
@@ -506,7 +538,23 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 			.store_op = SDL_GPU_STOREOP_STORE,
 		};
 
-		SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(commandBuffer, &colourTargetInfo, 1, nullptr);
+		if (swapchainSize != myAppState->depthTextureSize) {
+			SDL_Log("Resizing depth texture to %ux%u", swapchainSize.x, swapchainSize.y);
+			SDL_ReleaseGPUTexture(myAppState->device, myAppState->depthTexture);
+			CreateDepthTexture(swapchainSize, myAppState);
+		}
+		const SDL_GPUDepthStencilTargetInfo depthTargetInfo = {
+			.texture = myAppState->depthTexture,
+			.clear_depth = 1,
+			.load_op = SDL_GPU_LOADOP_CLEAR,
+			.store_op = SDL_GPU_STOREOP_STORE,
+			.stencil_load_op = SDL_GPU_LOADOP_CLEAR,
+			.stencil_store_op = SDL_GPU_STOREOP_STORE,
+			.cycle = true,
+			.clear_stencil = 0,
+		};
+
+		SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(commandBuffer, &colourTargetInfo, 1, &depthTargetInfo);
 
 		SDL_BindGPUGraphicsPipeline(renderPass, myAppState->pipeline);
 
@@ -571,6 +619,7 @@ void SDL_AppQuit(void* appstate, SDL_AppResult result) {
 	SDL_ReleaseGPUBuffer(myAppState->device, myAppState->vertexBuffer);
 	SDL_ReleaseGPUBuffer(myAppState->device, myAppState->indexBuffer);
 	SDL_ReleaseGPUTexture(myAppState->device, myAppState->texture);
+	SDL_ReleaseGPUTexture(myAppState->device, myAppState->depthTexture);
 	SDL_ReleaseGPUSampler(myAppState->device, myAppState->sampler);
 
 	delete myAppState;
