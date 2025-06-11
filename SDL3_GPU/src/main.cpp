@@ -254,8 +254,7 @@ void CreateDepthTexture(const math::uint2& newSize, MyAppState* myAppState) {
 	myAppState->depthTexture = SDL_CreateGPUTexture(myAppState->device, &depthTextureCreateInfo);
 }
 
-// ReSharper disable twice CppParameterNeverUsed
-SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
+SDL_AppResult SDL_AppInit(void** appstate, [[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 	MyAppState* myAppState = new MyAppState();
 	*appstate = myAppState;
 

@@ -15,8 +15,7 @@ constexpr bool debug_mode = false;
 constexpr bool debug_mode = true;
 #endif
 
-// ReSharper disable twice CppParameterNeverUsed
-SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
+SDL_AppResult SDL_AppInit(void** appstate, [[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 	const std::string name = QUOTE(MYPROJECT_NAME);
 	VulkanEngine* vulkanEngine = new VulkanEngine(name, debug_mode);
 	*appstate = vulkanEngine;

@@ -10,7 +10,7 @@ struct MyAppState {
 	SDL_Renderer* renderer = nullptr;
 };
 
-SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
+SDL_AppResult SDL_AppInit(void** appstate, [[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 	MyAppState* myAppState = new MyAppState();
 
 	if (!SDL_CreateWindowAndRenderer(myAppState->name.c_str(), 1280, 720, 0, &myAppState->window, &myAppState->renderer)) {
