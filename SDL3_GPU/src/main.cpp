@@ -199,7 +199,7 @@ std::optional<MyMesh> ImportMesh(const std::filesystem::path& meshPath) {
 	std::vector<MyVertex> vertices(mesh->mNumVertices);
 	for (int i = 0; i < mesh->mNumVertices; i++) {
 		const aiVector3D& pos = mesh->mVertices[i];
-		const aiVector3D tex = mesh->mTextureCoords[0][i];
+		const aiVector3D& tex = mesh->mTextureCoords[0][i];
 		SDL_Log("Assimp: Vertex %d: pos{x: %f, y: %f, z: %f} tex{x: %f, y: %f, z: %f}", i, pos.x, pos.y, pos.z, tex.x, tex.y, tex.z);
 		vertices[i] = MyVertex{
 			.pos = math::float3(pos.x, pos.y, pos.z),
