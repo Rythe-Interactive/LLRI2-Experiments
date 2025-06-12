@@ -34,11 +34,8 @@ struct AllocatedBuffer {
 };
 
 struct MyVertex {
-	math::float3 pos;
-	float uvX; //spread out to keep the struct small
-	math::float3 normal;
-	float uvY; //spread out to keep the struct small
-	math::float4 colour;
+	math::float4 pos;
+	math::float2 uv;
 };
 
 struct GPUMeshBuffers {

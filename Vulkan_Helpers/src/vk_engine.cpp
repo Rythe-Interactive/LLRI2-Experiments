@@ -383,7 +383,7 @@ SDL_AppResult VulkanEngine::InitPipelines() {
 SDL_AppResult VulkanEngine::InitMeshPipeline() {
 	VkShaderModule meshFragShader;
 	{
-		const std::filesystem::path fullPath = GetAssetsDir() / "shaders/compiled/" / "tex_image.frag.spv";
+		const std::filesystem::path fullPath = GetAssetsDir() / "shaders/compiled/" / "triangle.frag.spv";
 		if (const std::optional<VkShaderModule> meshFragShaderResult = vk_util::LoadShaderModule(fullPath.string().c_str(), device); !meshFragShaderResult.has_value()) {
 			SDL_Log("Couldn't load mesh fragment shader module");
 			return SDL_APP_FAILURE;

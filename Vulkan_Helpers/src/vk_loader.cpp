@@ -39,24 +39,10 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> ImportMesh(VulkanEngine* 
 		for (int i = 0; i < mesh->mNumVertices; i++) {
 			const aiVector3D& pos = mesh->mVertices[i];
 			const aiVector3D& tex = mesh->mTextureCoords[0][i];
-			const aiVector3D& nor = mesh->HasNormals() ? mesh->mNormals[i] : aiVector3D{0.0f, 0.0f, 1.0f}; // Default normal if no normals are present
-			aiColor4D col;
-			if (mesh->HasVertexColors(i)) {
-				col = mesh->mColors[0][i];
-			} else {
-				// If no vertex colours, we choose a "random" colour
-				float r = 0.5f + 0.5f * sinf(static_cast<float>(i) * 0.1f);
-				float g = 0.5f + 0.5f * sinf(static_cast<float>(i) * 0.2f);
-				float b = 0.5f + 0.5f * sinf(static_cast<float>(i) * 0.3f);
-				col = aiColor4D{r, g, b, 1.0f};
-			}
-			SDL_Log("Assimp: Vertex %d: pos{x: %f, y: %f, z: %f} tex{x: %f, y: %f, z: %f} col{r: %f, g: %f, b: %f, a: %f}", i, pos.x, pos.y, pos.z, tex.x, tex.y, tex.z, col.r, col.g, col.b, col.a);
+			SDL_Log("Assimp: Vertex %d: pos{x: %f, y: %f, z: %f} tex{x: %f, y: %f, z: %f}", i, pos.x, pos.y, pos.z, tex.x, tex.y, tex.z);
 			vertices[i] = MyVertex{
-				.pos = math::float3(pos.x, pos.y, pos.z),
-				.uvX = tex.x,
-				.normal = math::float3(nor.x, nor.y, nor.z),
-				.uvY = tex.y,
-				.colour = math::float4(col.r, col.g, col.b, col.a),
+				.pos = math::float4(pos.x, pos.y, pos.z, 1.0f),
+				.uv = math::float2(tex.x, tex.y),
 			};
 		}
 		// > Indices
