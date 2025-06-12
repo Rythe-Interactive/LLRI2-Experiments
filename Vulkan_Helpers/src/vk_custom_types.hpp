@@ -48,6 +48,8 @@ struct GPUMeshBuffers {
 };
 
 struct GPUDrawPushConstants {
-	math::float4x4 worldMatrix;
+	math::float4x4 modelMatrix;
+	math::float4x4 viewMatrix;
+	math::float4x4 projectionMatrix;
 	VkDeviceAddress vertexBufferAddress;
 };

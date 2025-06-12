@@ -736,6 +736,10 @@ SDL_AppResult VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) {
 
 	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipelineLayout, 0, 1, &imageSet, 0, nullptr);
 
+	//Uniforms
+	// > Model Matrix
+	math::float4x4 model = math::float4x4(1.0f);
+
 	// > View Matrix
 	constexpr float radius = 10.0f;
 	float camX = sinf(static_cast<float>(SDL_GetTicks()) / 1000.0f) * radius;
@@ -748,15 +752,14 @@ SDL_AppResult VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) {
 	// > Projection Matrix
 	math::int2 screenSize;
 	SDL_GetWindowSize(window, &screenSize.x, &screenSize.y);
-	math::float4x4 projection = perspective(math::degrees(45.0f).radians(),
-	                                        static_cast<float>(screenSize.x) / static_cast<float>(screenSize.y),
-	                                        0.1f, 1000.0f);
-
-	// invert the Y direction on projection matrix so that we are more similar to opengl and gltf axis
-	// projection[1][1] *= -1;
+	math::float4x4 proj = perspective(math::degrees(45.0f).radians(),
+	                                  static_cast<float>(screenSize.x) / static_cast<float>(screenSize.y),
+	                                  0.1f, 100.0f);
 
 	const GPUDrawPushConstants pushConstants{
-		.worldMatrix = view * projection,
+		.modelMatrix = model,
+		.viewMatrix = view,
+		.projectionMatrix = proj,
 		.vertexBufferAddress = meshes[selectedMeshIndex]->meshBuffers.vertexBufferAddress,
 	};
 
