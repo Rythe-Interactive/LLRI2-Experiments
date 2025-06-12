@@ -337,28 +337,6 @@ SDL_AppResult VulkanEngine::InitDescriptors() {
 
 	globalDescriptorAllocator.InitPool(device, 10, sizes);
 
-	//make the descriptor set layout for our compute draw
-	{
-		DescriptorLayoutBuilder builder;
-		builder.AddBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-		const std::optional<VkDescriptorSetLayout> buildResult = builder.Build(device, VK_SHADER_STAGE_COMPUTE_BIT);
-		if (!buildResult.has_value()) {
-			SDL_Log("Couldn't create descriptor set layout for compute draw image");
-			return SDL_APP_FAILURE;
-		}
-		drawImageDescriptorLayout = buildResult.value();
-	}
-	{
-		DescriptorLayoutBuilder builder;
-		builder.AddBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-		builder.AddBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-		const std::optional<VkDescriptorSetLayout> buildResult = builder.Build(device, VK_SHADER_STAGE_COMPUTE_BIT);
-		if (!buildResult.has_value()) {
-			SDL_Log("Couldn't create descriptor set layout for screen image descriptor");
-			return SDL_APP_FAILURE;
-		}
-		screenImageDescriptorLayout = buildResult.value();
-	}
 	{
 		DescriptorLayoutBuilder builder;
 		builder.AddBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
@@ -369,56 +347,12 @@ SDL_AppResult VulkanEngine::InitDescriptors() {
 		}
 		singleImageDescriptorLayout = buildResult.value();
 	}
-	{
-		DescriptorLayoutBuilder builder;
-		builder.AddBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-		const std::optional<VkDescriptorSetLayout> buildResult = builder.Build(device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
-		if (!buildResult.has_value()) {
-			SDL_Log("Couldn't create descriptor set layout for GPU scene data");
-			return SDL_APP_FAILURE;
-		}
-		gpuSceneDataDescriptorLayout = buildResult.value();
-	}
-
-	//allocate a descriptor set for our draw image
-	const std::optional<VkDescriptorSet> allocationResult = globalDescriptorAllocator.Allocate(device, drawImageDescriptorLayout);
-	if (!allocationResult.has_value()) {
-		SDL_Log("Couldn't allocate descriptor set for draw image");
-		return SDL_APP_FAILURE;
-	}
-	drawImageDescriptors = allocationResult.value();
-
-	{
-		DescriptorWriter writer;
-		writer.WriteImage(0, drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-		writer.UpdateSet(device, drawImageDescriptors);
-	}
-
-	//screen image
-	const uint32_t magenta = packUnorm4x8(math::float4(1, 0, 1, 1));
-	const uint32_t black = packUnorm4x8(math::float4(0, 0, 0, 0));
-	std::array<uint32_t, 16 * 16> pixels{}; //for 16x16 checkerboard texture
-	for (int x = 0; x < 16; x++) {
-		for (int y = 0; y < 16; y++) {
-			pixels[y * 16 + x] = x % 2 ^ y % 2 ? magenta : black;
-		}
-	}
-	//allocate a descriptor set for the screen image
-	const std::optional<VkDescriptorSet> screenAllocationResult = globalDescriptorAllocator.Allocate(device, screenImageDescriptorLayout);
-	if (!screenAllocationResult.has_value()) {
-		SDL_Log("Couldn't allocate descriptor set for screen image");
-		return SDL_APP_FAILURE;
-	}
-	screenImageDescriptors = screenAllocationResult.value();
 
 	//make sure both the descriptor allocator and the new layout get cleaned up properly
 	mainDeletionQueue.PushFunction([&] {
 		globalDescriptorAllocator.DestroyPool(device);
 
-		vkDestroyDescriptorSetLayout(device, gpuSceneDataDescriptorLayout, nullptr);
 		vkDestroyDescriptorSetLayout(device, singleImageDescriptorLayout, nullptr);
-		vkDestroyDescriptorSetLayout(device, screenImageDescriptorLayout, nullptr);
-		vkDestroyDescriptorSetLayout(device, drawImageDescriptorLayout, nullptr);
 	});
 
 	for (FrameData& frame : frames) {
@@ -439,144 +373,9 @@ SDL_AppResult VulkanEngine::InitDescriptors() {
 }
 
 SDL_AppResult VulkanEngine::InitPipelines() {
-	if (const SDL_AppResult res = InitBackgroundPipelines(); res != SDL_APP_CONTINUE) {
-		return res;
-	}
 	if (const SDL_AppResult res = InitMeshPipeline(); res != SDL_APP_CONTINUE) {
 		return res;
 	}
-
-	return SDL_APP_CONTINUE;
-}
-
-SDL_AppResult VulkanEngine::InitBackgroundPipelines() {
-	VkPushConstantRange pushConstantRange{
-		.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-		.offset = 0,
-		.size = sizeof(ComputePushConstants),
-	};
-
-	const VkPipelineLayoutCreateInfo computeLayout{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-		.setLayoutCount = 1,
-		.pSetLayouts = &drawImageDescriptorLayout,
-		.pushConstantRangeCount = 1,
-		.pPushConstantRanges = &pushConstantRange,
-	};
-
-	VkPipelineLayout computePipelineLayout;
-	VK_CHECK(vkCreatePipelineLayout(device, &computeLayout, nullptr, &computePipelineLayout), "Couldn't create compute pipeline layout");
-
-	const std::filesystem::path compiledShadersPath = GetAssetsDir() / "shaders/compiled/";
-
-	VkShaderModule gradientShader;
-	{
-		const std::filesystem::path gradientShaderPath = compiledShadersPath / "gradient_colour.comp.spv";
-		const std::optional<VkShaderModule> gradientShaderResult = vk_util::LoadShaderModule(gradientShaderPath.string().c_str(), device);
-		if (!gradientShaderResult.has_value()) {
-			SDL_Log("Couldn't load compute shader module: %s", gradientShaderPath.string().c_str());
-			return SDL_APP_FAILURE;
-		}
-		gradientShader = gradientShaderResult.value();
-	}
-	VkShaderModule skyShader;
-	{
-		const std::filesystem::path skyShaderPath = compiledShadersPath / "sky.comp.spv";
-		const std::optional<VkShaderModule> skyShaderResult = vk_util::LoadShaderModule(skyShaderPath.string().c_str(), device);
-		if (!skyShaderResult.has_value()) {
-			SDL_Log("Couldn't load compute shader module: %s", skyShaderPath.string().c_str());
-			return SDL_APP_FAILURE;
-		}
-		skyShader = skyShaderResult.value();
-	}
-	VkShaderModule screenShader;
-	{
-		const std::filesystem::path screenShaderPath = compiledShadersPath / "screen.comp.spv";
-		const std::optional<VkShaderModule> screenShaderResult = vk_util::LoadShaderModule(screenShaderPath.string().c_str(), device);
-		if (!screenShaderResult.has_value()) {
-			SDL_Log("Couldn't load compute shader module: %s", screenShaderPath.string().c_str());
-			return SDL_APP_FAILURE;
-		}
-		screenShader = screenShaderResult.value();
-	}
-
-	const VkPipelineShaderStageCreateInfo stageCreateInfo{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.module = gradientShader,
-		.pName = "main",
-	};
-
-	VkComputePipelineCreateInfo computePipelineCreateInfo{
-		.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-		.pNext = nullptr,
-		.stage = stageCreateInfo,
-		.layout = computePipelineLayout,
-	};
-
-	ComputeEffect gradientEffect{
-		.name = "gradient",
-		.layout = computePipelineLayout,
-		.descriptorSet = drawImageDescriptors,
-		.data = ComputePushConstants{
-			//default colours
-			.data1 = math::float4{1.0f, 0.0f, 0.0f, 1.0f}, // Red
-			.data2 = math::float4{0.0f, 0.0f, 1.0f, 1.0f}, // Blue
-		},
-	};
-	VK_CHECK(vkCreateComputePipelines(device, nullptr, 1, &computePipelineCreateInfo, nullptr, &gradientEffect.pipeline), "Couldn't create compute pipeline: gradient");
-
-	//reuse the structs we've already made, but with the other shader
-	computePipelineCreateInfo.stage.module = skyShader;
-
-	ComputeEffect skyEffect{
-		.name = "sky",
-		.layout = computePipelineLayout,
-		.descriptorSet = drawImageDescriptors,
-		.data = ComputePushConstants{
-			//default colours
-			.data1 = math::float4{0.1f, 0.2f, 0.4f, 0.97f}, // Light blue
-		},
-	};
-	VK_CHECK(vkCreateComputePipelines(device, nullptr, 1, &computePipelineCreateInfo, nullptr, &skyEffect.pipeline), "Couldn't create compute pipeline: sky");
-
-	const VkPipelineLayoutCreateInfo computeLayoutScreen{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-		.setLayoutCount = 1,
-		.pSetLayouts = &screenImageDescriptorLayout,
-	};
-
-	VkPipelineLayout computePipelineLayoutScreen;
-	VK_CHECK(vkCreatePipelineLayout(device, &computeLayoutScreen, nullptr, &computePipelineLayoutScreen), "Couldn't create screen compute pipeline layout");
-
-	computePipelineCreateInfo.stage.module = screenShader;
-	computePipelineCreateInfo.layout = computePipelineLayoutScreen;
-
-	ComputeEffect screenEffect{
-		.name = "screen",
-		.layout = computePipelineLayoutScreen,
-		.descriptorSet = screenImageDescriptors,
-		.hasPushConstants = false,
-	};
-	VK_CHECK(vkCreateComputePipelines(device, nullptr, 1, &computePipelineCreateInfo, nullptr, &screenEffect.pipeline), "Couldn't create compute pipeline: sky");
-
-	//add the effects to the background effects vector
-	backgroundEffects.push_back(gradientEffect);
-	backgroundEffects.push_back(skyEffect);
-	backgroundEffects.push_back(screenEffect);
-
-	//destroy the shader modules we created
-	vkDestroyShaderModule(device, gradientShader, nullptr);
-	vkDestroyShaderModule(device, skyShader, nullptr);
-	vkDestroyShaderModule(device, screenShader, nullptr);
-
-	mainDeletionQueue.PushFunction([=, this] {
-		vkDestroyPipelineLayout(device, computePipelineLayoutScreen, nullptr);
-		vkDestroyPipelineLayout(device, computePipelineLayout, nullptr);
-		vkDestroyPipeline(device, screenEffect.pipeline, nullptr);
-		vkDestroyPipeline(device, skyEffect.pipeline, nullptr);
-		vkDestroyPipeline(device, gradientEffect.pipeline, nullptr);
-	});
 
 	return SDL_APP_CONTINUE;
 }
@@ -673,73 +472,6 @@ SDL_AppResult VulkanEngine::ImmediateSubmit(std::function<void(VkCommandBuffer c
 	return SDL_APP_CONTINUE;
 }
 
-SDL_AppResult VulkanEngine::InitImgui() {
-	// 1: create descriptor pool for IMGUI
-	//  the size of the pool is very oversized, but it's copied from imgui demo
-	//  itself.
-	std::array poolSizes = {
-		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
-		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
-		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000},
-		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000},
-		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000},
-		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000},
-		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000},
-		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000},
-		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000},
-		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000},
-		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000}
-	};
-
-	const VkDescriptorPoolCreateInfo poolCreateInfo = {
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-		.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
-		.maxSets = 1000,
-		.poolSizeCount = poolSizes.size(),
-		.pPoolSizes = poolSizes.data(),
-	};
-
-	VkDescriptorPool imguiPool;
-	VK_CHECK(vkCreateDescriptorPool(device, &poolCreateInfo, nullptr, &imguiPool), "Couldn't create imgui descriptor pool");
-
-	// 2: initialize imgui library
-
-	// this initializes the core structures of imgui
-	ImGui::CreateContext();
-
-	// this initializes imgui for SDL
-	ImGui_ImplSDL3_InitForVulkan(window);
-
-	// this initializes imgui for Vulkan
-	ImGui_ImplVulkan_InitInfo imguiVulkanInitInfo = {
-		.Instance = instance,
-		.PhysicalDevice = physicalDevice,
-		.Device = device,
-		.Queue = graphicsQueue,
-		.DescriptorPool = imguiPool,
-		.MinImageCount = 3,
-		.ImageCount = 3,
-		.MSAASamples = VK_SAMPLE_COUNT_1_BIT,
-		.UseDynamicRendering = true,
-		//dynamic rendering parameters for imgui to use
-		.PipelineRenderingCreateInfo = VkPipelineRenderingCreateInfo{
-			.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-			.colorAttachmentCount = 1,
-			.pColorAttachmentFormats = &swapchainImageFormat,
-		},
-	};
-
-	ImGui_ImplVulkan_Init(&imguiVulkanInitInfo);
-
-	// destroy the imgui created structures
-	mainDeletionQueue.PushFunction([=, this] {
-		ImGui_ImplVulkan_Shutdown();
-		vkDestroyDescriptorPool(device, imguiPool, nullptr);
-	});
-
-	return SDL_APP_CONTINUE;
-}
-
 SDL_AppResult VulkanEngine::InitDefaultData() {
 	const std::filesystem::path fullPath = GetAssetsDir() / "models/suzanne/suzanne.obj";
 	// const std::filesystem::path fullPath = GetAssetsDir() / "models/container/blender_quad.obj";
@@ -750,60 +482,15 @@ SDL_AppResult VulkanEngine::InitDefaultData() {
 	}
 	meshes = std::move(meshResult.value());
 
-	//3 default textures, white, grey, black. 1 pixel each
-	constexpr VkExtent3D pixelSize{1, 1, 1};
-
-	// white
-	const uint32_t white = packUnorm4x8(math::float4(1, 1, 1, 1));
-	const std::optional<AllocatedImage> whiteImageResult = CreateImage(&white, pixelSize, sizeof(uint32_t), VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
-	if (!whiteImageResult.has_value()) {
-		SDL_Log("Couldn't create white image");
-		return SDL_APP_FAILURE;
-	}
-	whiteImage = whiteImageResult.value();
-
-	// grey
-	const uint32_t grey = packUnorm4x8(math::float4(0.66f, 0.66f, 0.66f, 1));
-	const std::optional<AllocatedImage> greyImageResult = CreateImage(&grey, pixelSize, sizeof(uint32_t), VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
-	if (!greyImageResult.has_value()) {
-		SDL_Log("Couldn't create grey image");
-		return SDL_APP_FAILURE;
-	}
-	greyImage = greyImageResult.value();
-
-	// black
-	const uint32_t black = packUnorm4x8(math::float4(0, 0, 0, 0));
-	const std::optional<AllocatedImage> blackImageResult = CreateImage(&black, pixelSize, sizeof(uint32_t), VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
-	if (!blackImageResult.has_value()) {
-		SDL_Log("Couldn't create black image");
-		return SDL_APP_FAILURE;
-	}
-	blackImage = blackImageResult.value();
-
-	//checkerboard image
-	const uint32_t magenta = packUnorm4x8(math::float4(1, 0, 1, 1));
-	std::array<uint32_t, 16 * 16> pixels{}; //for 16x16 checkerboard texture
-	for (int x = 0; x < 16; x++) {
-		for (int y = 0; y < 16; y++) {
-			pixels[y * 16 + x] = x % 2 ^ y % 2 ? magenta : black;
-		}
-	}
-	std::optional<AllocatedImage> errorCheckerboardImageResult = CreateImage(pixels.data(), VkExtent3D{16, 16, 1}, sizeof(uint32_t), VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
-	if (!errorCheckerboardImageResult.has_value()) {
-		SDL_Log("Couldn't create error checkerboard image");
-		return SDL_APP_FAILURE;
-	}
-	errorCheckerboardImage = errorCheckerboardImageResult.value();
-
 	//image texture
 	SDL_Surface* imageData = LoadImage(meshes[selectedMeshIndex]->texturePath, 4);
 	if (imageData == nullptr) {
 		SDL_Log("Couldn't load image data!");
 		return SDL_APP_FAILURE;
 	}
-	std::optional<AllocatedImage> imageTextureResult = CreateImage(imageData->pixels, VkExtent3D{static_cast<uint32_t>(imageData->w), static_cast<uint32_t>(imageData->h), 1}, sizeof(uint32_t), VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
-	if (!errorCheckerboardImageResult.has_value()) {
-		SDL_Log("Couldn't create error checkerboard image");
+	const std::optional<AllocatedImage> imageTextureResult = CreateImage(imageData->pixels, VkExtent3D{static_cast<uint32_t>(imageData->w), static_cast<uint32_t>(imageData->h), 1}, sizeof(uint32_t), VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+	if (!imageTextureResult.has_value()) {
+		SDL_Log("Couldn't create image texture!");
 		return SDL_APP_FAILURE;
 	}
 	imageTexture = imageTextureResult.value();
@@ -811,21 +498,12 @@ SDL_AppResult VulkanEngine::InitDefaultData() {
 
 	VkSamplerCreateInfo sampler = {.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,};
 
-	sampler.magFilter = VK_FILTER_NEAREST;
-	sampler.minFilter = VK_FILTER_NEAREST;
-	vkCreateSampler(device, &sampler, nullptr, &defaultSamplerNearest);
-
 	sampler.magFilter = VK_FILTER_LINEAR;
 	sampler.minFilter = VK_FILTER_LINEAR;
 	vkCreateSampler(device, &sampler, nullptr, &defaultSamplerLinear);
 	mainDeletionQueue.PushFunction([&] {
-		vkDestroySampler(device, defaultSamplerNearest, nullptr);
 		vkDestroySampler(device, defaultSamplerLinear, nullptr);
 
-		DestroyImage(whiteImage);
-		DestroyImage(greyImage);
-		DestroyImage(blackImage);
-		DestroyImage(errorCheckerboardImage);
 		DestroyImage(imageTexture);
 	});
 
@@ -920,24 +598,6 @@ std::optional<GPUMeshBuffers> VulkanEngine::UploadMesh(std::span<Uint16> indices
 	return newSurface;
 }
 
-SDL_AppResult VulkanEngine::CreateScreenImage(const void* pixels, const size_t pixelSize, const uint32_t width, const uint32_t height) {
-	const std::optional<AllocatedImage> screenImageResult = CreateImage(pixels, VkExtent3D{width, height, 1}, pixelSize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_STORAGE_BIT, false, VK_IMAGE_LAYOUT_GENERAL);
-	if (!screenImageResult.has_value()) {
-		SDL_Log("Couldn't create screen image");
-		return SDL_APP_FAILURE;
-	}
-	GetCurrentFrame().screenImage = screenImageResult.value();
-
-	{
-		DescriptorWriter writer;
-		writer.WriteImage(0, drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-		writer.WriteImage(1, GetCurrentFrame().screenImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-		writer.UpdateSet(device, screenImageDescriptors);
-	}
-
-	return SDL_APP_CONTINUE;
-}
-
 #pragma endregion
 
 VulkanEngine::VulkanEngine(std::string name, const bool debugMode)
@@ -1009,10 +669,6 @@ SDL_AppResult VulkanEngine::Init(const int width, const int height) {
 		return res;
 	}
 
-	if (const SDL_AppResult res = InitImgui(); res != SDL_APP_CONTINUE) {
-		return res;
-	}
-
 	if (const SDL_AppResult res = InitDefaultData(); res != SDL_APP_CONTINUE) {
 		return res;
 	}
@@ -1020,53 +676,14 @@ SDL_AppResult VulkanEngine::Init(const int width, const int height) {
 	return SDL_APP_CONTINUE;
 }
 
-SDL_AppResult VulkanEngine::DrawBackground(const VkCommandBuffer& commandBuffer) {
-	if (currentBackgroundEffectIndex == 2) {
-		constexpr uint32_t width = 16;
-		constexpr uint32_t height = 16;
-		//screen image
-		std::array<uint32_t, width * height> pixels{}; //for 16x16 checkerboard texture
-		for (int x = 0; x < width; x++) {
-			for (int y = 0; y < height; y++) {
-				// Random colour (rand() is fine enough)
-				const float r = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); // NOLINT(*-msc50-cpp)
-				const float g = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); // NOLINT(*-msc50-cpp)
-				const float b = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); // NOLINT(*-msc50-cpp)
-				pixels[y * width + x] = packUnorm4x8(math::float4(r, g, b, 1.0f));
-			}
-		}
-		if (const SDL_AppResult res = CreateScreenImage(pixels.data(), sizeof(uint32_t), width, height); res != SDL_APP_CONTINUE) {
-			return res;
-		}
+void VulkanEngine::DrawBackground(const VkCommandBuffer& commandBuffer) const {
+	constexpr VkClearColorValue clearValue = {
+		.float32 = {0.3f, 0.4f, 0.5f, 1.0f},
+	};
 
-		FrameData& currentFrame = GetCurrentFrame();
-		currentFrame.frameDeletionQueue.PushFunction([&] { DestroyImage(currentFrame.screenImage); });
-	}
+	const VkImageSubresourceRange clearRange = vk_util::ImageSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT);
 
-	const ComputeEffect& currentEffect = backgroundEffects[currentBackgroundEffectIndex];
-
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, currentEffect.pipeline);
-
-	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, currentEffect.layout, 0, 1, &currentEffect.descriptorSet, 0, nullptr);
-
-	if (currentEffect.hasPushConstants) {
-		vkCmdPushConstants(commandBuffer, currentEffect.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &currentEffect.data);
-	}
-
-	vkCmdDispatch(commandBuffer, std::ceil(drawExtent.width / 16.0), std::ceil(drawExtent.height / 16.0), 1);
-
-	return SDL_APP_CONTINUE;
-}
-
-void VulkanEngine::DrawImGui(const VkCommandBuffer& commandBuffer, const VkImageView& targetImageView) const {
-	const VkRenderingAttachmentInfo colourAttachment = vk_init::AttachmentInfo(targetImageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-	const VkRenderingInfo renderingInfo = vk_init::RenderingInfo(swapchainExtent, &colourAttachment, nullptr);
-
-	vkCmdBeginRendering(commandBuffer, &renderingInfo);
-
-	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
-
-	vkCmdEndRendering(commandBuffer);
+	vkCmdClearColorImage(commandBuffer, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
 }
 
 SDL_AppResult VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) {
@@ -1102,14 +719,6 @@ SDL_AppResult VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) {
 
 	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-	if (ImGui::Begin("Camera")) {
-		ImGui::SliderFloat("Camera Radius", &cameraRadius, -20.0f, 20.0f);
-		ImGui::SliderFloat("Camera Height", &cameraHeight, -20.0f, 20.0f);
-		ImGui::SliderFloat("Camera Rotation Speed", &cameraRotationSpeed, 0.0f, 0.002f);
-		ImGui::SliderFloat("Camera FOV", &cameraFOV, 0.0f, 180.0f);
-	}
-	ImGui::End();
-
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline);
 
 	//bind a texture
@@ -1121,29 +730,30 @@ SDL_AppResult VulkanEngine::DrawGeometry(const VkCommandBuffer& commandBuffer) {
 	VkDescriptorSet imageSet = imageSetResult.value();
 	{
 		DescriptorWriter writer;
-		writer.WriteImage(0, images[selectedTextureIndex]->imageView, defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		writer.WriteImage(0, imageTexture.imageView, defaultSamplerLinear, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 		writer.UpdateSet(device, imageSet);
 	}
 
 	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipelineLayout, 0, 1, &imageSet, 0, nullptr);
 
 	// > View Matrix
-	float camX = sinf(static_cast<float>(SDL_GetTicks()) * cameraRotationSpeed) * cameraRadius;
-	float camZ = cosf(static_cast<float>(SDL_GetTicks()) * cameraRotationSpeed) * cameraRadius;
-	math::float3 cameraPos = math::float3(camX, -cameraHeight, camZ);
+	constexpr float radius = 10.0f;
+	float camX = sinf(static_cast<float>(SDL_GetTicks()) / 1000.0f) * radius;
+	float camZ = cosf(static_cast<float>(SDL_GetTicks()) / 1000.0f) * radius;
+	math::float3 cameraPos = math::float3(camX, -3.0f, camZ);
 	math::float3 cameraTarget = math::float3(0.0f, 0.0f, 0.0f);
-	math::float3 up = math::float3(0.0f, 1.0f, 0.0f);
+	math::float3 up = math::float3(0.0f, -1.0f, 0.0f);
 	math::float4x4 view = inverse(look_at(cameraPos, cameraTarget, up));
 
 	// > Projection Matrix
 	math::int2 screenSize;
 	SDL_GetWindowSize(window, &screenSize.x, &screenSize.y);
-	math::float4x4 projection = perspective(math::degrees(cameraFOV).radians(),
+	math::float4x4 projection = perspective(math::degrees(45.0f).radians(),
 	                                        static_cast<float>(screenSize.x) / static_cast<float>(screenSize.y),
 	                                        0.1f, 1000.0f);
 
 	// invert the Y direction on projection matrix so that we are more similar to opengl and gltf axis
-	projection[1][1] *= -1;
+	// projection[1][1] *= -1;
 
 	const GPUDrawPushConstants pushConstants{
 		.worldMatrix = view * projection,
@@ -1254,32 +864,6 @@ SDL_AppResult VulkanEngine::Draw() {
 		}
 	}
 
-	ImGui_ImplVulkan_NewFrame();
-	ImGui_ImplSDL3_NewFrame();
-	ImGui::NewFrame();
-
-	// ImGui::ShowDemoWindow();
-
-	if (ImGui::Begin("Background")) {
-		ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.0f);
-		renderScale = math::clamp(renderScale, 0.01f, 1.0f); //to prevent manual (typed, not slid) input from going out of bounds
-		ImGui::SliderInt("Render Scale Filter", reinterpret_cast<int*>(&renderScaleFilter), 0, 1);
-
-		const ComputeEffect& currentEffect = backgroundEffects[currentBackgroundEffectIndex];
-
-		ImGui::Text("Selected effect: ", currentEffect.name);
-		ImGui::SliderInt("Effect Index", &currentBackgroundEffectIndex, 0, static_cast<int>(backgroundEffects.size() - 1));
-
-		ImGui::InputFloat4("data1", const_cast<float*>(&currentEffect.data.data1.x));
-		ImGui::InputFloat4("data2", const_cast<float*>(&currentEffect.data.data2.x));
-		ImGui::InputFloat4("data3", const_cast<float*>(&currentEffect.data.data3.x));
-		ImGui::InputFloat4("data4", const_cast<float*>(&currentEffect.data.data4.x));
-
-		ImGui::Text("Monkey Texture: %s", meshes[selectedMeshIndex]->texturePath.string().c_str());
-		ImGui::SliderInt("Selected Texture", &selectedTextureIndex, 0, static_cast<int>(images.size()) - 1);
-	}
-	ImGui::End();
-
 	VK_CHECK(vkWaitForFences(device, 1, &GetCurrentFrame().renderFence, true, secondInNanoseconds), "Couldn't wait for fence");
 
 	GetCurrentFrame().frameDeletionQueue.Flush();
@@ -1289,7 +873,6 @@ SDL_AppResult VulkanEngine::Draw() {
 	if (const VkResult err = vkAcquireNextImageKHR(device, swapchain, secondInNanoseconds, GetCurrentFrame().swapchainSemaphore, nullptr, &swapchainImageIndex);
 		err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR) {
 		resizeRequested = true;
-		ImGui::EndFrame();
 		return SDL_APP_CONTINUE;
 	} else if (err != VK_SUCCESS) {
 		SDL_Log("Detected Vulkan error: %s: %s", "Couldn't acquire next image", string_VkResult(err));
@@ -1314,9 +897,7 @@ SDL_AppResult VulkanEngine::Draw() {
 	// we will overwrite it all so we don't care about what was the older layout
 	vk_util::TransitionImage(commandBuffer, drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
-	if (const SDL_AppResult res = DrawBackground(commandBuffer); res != SDL_APP_CONTINUE) {
-		return res;
-	}
+	DrawBackground(commandBuffer);
 
 	vk_util::TransitionImage(commandBuffer, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	vk_util::TransitionImage(commandBuffer, depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
@@ -1334,10 +915,6 @@ SDL_AppResult VulkanEngine::Draw() {
 
 	// set swapchain image layout to Attachment Optimal so we can draw into it from imgui
 	vk_util::TransitionImage(commandBuffer, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
-
-	// draw imgui into the swapchain image
-	ImGui::Render();
-	DrawImGui(commandBuffer, swapchainImageViews[swapchainImageIndex]);
 
 	// set swapchain image layout to Present so we can show it on the screen
 	vk_util::TransitionImage(commandBuffer, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
@@ -1392,8 +969,6 @@ SDL_AppResult VulkanEngine::HandleEvent(const SDL_Event* event) {
 		default:
 			break;
 	}
-
-	ImGui_ImplSDL3_ProcessEvent(event);
 
 	return SDL_APP_CONTINUE;
 }

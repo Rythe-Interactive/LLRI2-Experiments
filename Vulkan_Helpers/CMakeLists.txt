@@ -35,10 +35,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE vk-bootstrap::vk-bootstrap)
 # Link to the VMA library.
 target_link_libraries(${PROJECT_NAME} PRIVATE GPUOpen::VulkanMemoryAllocator)
 
-# Link to the Dear ImGui library.
-target_compile_definitions(${PROJECT_NAME} PRIVATE IMGUI_IMPL_VULKAN_USE_VOLK)
-target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
-
 # Link to the Assimp library.
 target_link_libraries(${PROJECT_NAME} PRIVATE assimp)
 

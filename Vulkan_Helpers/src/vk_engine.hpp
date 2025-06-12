@@ -36,8 +36,6 @@ class VulkanEngine {
 
 		DeletionQueue frameDeletionQueue;
 		DescriptorAllocatorGrowable frameDescriptors;
-
-		AllocatedImage screenImage = {};
 	};
 
 	unsigned int frameNumber = 0;
@@ -61,9 +59,6 @@ class VulkanEngine {
 
 	DescriptorAllocator globalDescriptorAllocator = {};
 
-	VkDescriptorSet drawImageDescriptors = nullptr;
-	VkDescriptorSetLayout drawImageDescriptorLayout = nullptr;
-
 	VkPipeline meshPipeline = nullptr;
 	VkPipelineLayout meshPipelineLayout = nullptr;
 
@@ -75,58 +70,11 @@ class VulkanEngine {
 	VkCommandBuffer immediateSubmitCommandBuffer = nullptr;
 	VkCommandPool immediateSubmitCommandPool = nullptr;
 
-	//Push Constants for the Compute Background
-	struct ComputePushConstants {
-		math::float4 data1;
-		math::float4 data2;
-		math::float4 data3;
-		math::float4 data4;
-	};
-
-	struct ComputeEffect {
-		const char* name{};
-		VkPipeline pipeline{};
-		VkPipelineLayout layout{};
-		VkDescriptorSet descriptorSet{};
-		bool hasPushConstants = true;
-		ComputePushConstants data;
-	};
-
-	std::vector<ComputeEffect> backgroundEffects;
-	int currentBackgroundEffectIndex = 0;
-
-	float cameraRadius = 10.0f;
-	float cameraHeight = 3.0f;
-	float cameraRotationSpeed = 0.001f;
-	float cameraFOV = 45.0f;
-
-	struct GPUSceneData {
-		math::float4x4 view;
-		math::float4x4 proj;
-		math::float4x4 viewProj;
-		math::float4 ambientColour;
-		math::float4 sunlightDirection; //w is the sun's power
-		math::float4 sunlightColour;
-	};
-
-	GPUSceneData sceneData;
-	VkDescriptorSetLayout gpuSceneDataDescriptorLayout = nullptr;
-
-	AllocatedImage whiteImage = {};
-	AllocatedImage blackImage = {};
-	AllocatedImage greyImage = {};
-	AllocatedImage errorCheckerboardImage = {};
 	AllocatedImage imageTexture = {};
-	int selectedTextureIndex = 3;
-	std::array<AllocatedImage*, 5> images = {&whiteImage, &blackImage, &greyImage, &errorCheckerboardImage, &imageTexture};
 
 	VkSampler defaultSamplerLinear = nullptr;
-	VkSampler defaultSamplerNearest = nullptr;
 
 	VkDescriptorSetLayout singleImageDescriptorLayout = nullptr;
-
-	VkDescriptorSet screenImageDescriptors = nullptr;
-	VkDescriptorSetLayout screenImageDescriptorLayout = nullptr;
 
 private:
 	[[nodiscard]] SDL_AppResult InitVulkan();
@@ -144,11 +92,7 @@ private:
 
 private:
 	[[nodiscard]] SDL_AppResult InitPipelines();
-	[[nodiscard]] SDL_AppResult InitBackgroundPipelines();
 	[[nodiscard]] SDL_AppResult InitMeshPipeline();
-
-private:
-	[[nodiscard]] SDL_AppResult InitImgui();
 
 private:
 	[[nodiscard]] SDL_AppResult InitDefaultData();
@@ -158,17 +102,13 @@ private:
 	void DestroyBuffer(const AllocatedBuffer& buffer) const;
 
 private:
-	[[nodiscard]] SDL_AppResult DrawBackground(const VkCommandBuffer& commandBuffer);
-	void DrawImGui(const VkCommandBuffer& commandBuffer, const VkImageView& targetImageView) const;
+	void DrawBackground(const VkCommandBuffer& commandBuffer) const;
 	[[nodiscard]] SDL_AppResult DrawGeometry(const VkCommandBuffer& commandBuffer);
 
 private:
 	[[nodiscard]] std::optional<AllocatedImage> CreateImage(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false) const;
 	[[nodiscard]] std::optional<AllocatedImage> CreateImage(const void* data, VkExtent3D imageSize, size_t pixelSize, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false, VkImageLayout finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) const;
 	void DestroyImage(const AllocatedImage& allocatedImage) const;
-
-private:
-	SDL_AppResult CreateScreenImage(const void* pixels, size_t pixelSize, uint32_t width, uint32_t height);
 
 public:
 	VulkanEngine(std::string name, bool debugMode);

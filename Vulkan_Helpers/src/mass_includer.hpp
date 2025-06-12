@@ -25,11 +25,6 @@
 #include <vk_mem_alloc.h>
 #include <vulkan/vk_enum_string_helper.h>
 
-// Dear ImGui
-#include <imgui.h>
-#include <imgui_impl_sdl3.h>
-#include <imgui_impl_vulkan.h>
-
 // Assimp
 #include <assimp/Importer.hpp>      // C++ importer interface
 #include <assimp/scene.h>           // Output data structure
