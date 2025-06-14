@@ -642,7 +642,6 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 		return SDL_APP_SUCCESS;
 	}
 
-	SDL_Log("Frame: %u, Time: %u ns", myAppState->frameNumber, myAppState->frameTimes[myAppState->frameNumber - 1]);
 	return SDL_APP_CONTINUE;
 }
 
