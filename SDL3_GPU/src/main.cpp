@@ -163,7 +163,7 @@ SDL_Surface* LoadImage(const std::filesystem::path& imagePath, const int desired
 	if (desiredChannels == 4) {
 		format = SDL_PIXELFORMAT_ABGR8888;
 	} else {
-		SDL_assert(!"Unexpected desiredChannels");
+		SDL_Log("Unexpected desiredChannels");
 		SDL_DestroySurface(result);
 		return nullptr;
 	}
@@ -202,7 +202,6 @@ std::optional<MyMesh> ImportMesh(const std::filesystem::path& meshPath) {
 	for (int i = 0; i < mesh->mNumVertices; i++) {
 		const aiVector3D& pos = mesh->mVertices[i];
 		const aiVector3D& tex = mesh->mTextureCoords[0][i];
-		SDL_Log("Assimp: Vertex %d: pos{x: %f, y: %f, z: %f} tex{x: %f, y: %f, z: %f}", i, pos.x, pos.y, pos.z, tex.x, tex.y, tex.z);
 		vertices[i] = MyVertex{
 			.pos = math::float3(pos.x, pos.y, pos.z),
 			.tex = math::float2(tex.x, tex.y),
@@ -213,12 +212,9 @@ std::optional<MyMesh> ImportMesh(const std::filesystem::path& meshPath) {
 	SDL_Log("Assimp: Mesh %s has %d faces", fullPath.c_str(), mesh->mNumFaces);
 	for (int i = 0; i < mesh->mNumFaces; i++) {
 		const aiFace& face = mesh->mFaces[i];
-		SDL_Log("Assimp: Face %d: ", i);
 		for (int j = 0; j < face.mNumIndices; j++) {
-			SDL_Log("%d ", face.mIndices[j]);
 			indices[i * 3 + j] = face.mIndices[j];
 		}
-		SDL_Log("\n");
 	}
 
 	// Material texture path

@@ -39,7 +39,6 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> ImportMesh(VulkanEngine* 
 		for (int i = 0; i < mesh->mNumVertices; i++) {
 			const aiVector3D& pos = mesh->mVertices[i];
 			const aiVector3D& tex = mesh->mTextureCoords[0][i];
-			SDL_Log("Assimp: Vertex %d: pos{x: %f, y: %f, z: %f} tex{x: %f, y: %f, z: %f}", i, pos.x, pos.y, pos.z, tex.x, tex.y, tex.z);
 			vertices[i] = MyVertex{
 				.pos = math::float4(pos.x, pos.y, pos.z, 1.0f),
 				.uv = math::float2(tex.x, tex.y),
@@ -50,12 +49,9 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> ImportMesh(VulkanEngine* 
 		SDL_Log("Assimp: Mesh %s has %d faces", fullPath.c_str(), mesh->mNumFaces);
 		for (int i = 0; i < mesh->mNumFaces; i++) {
 			const aiFace& face = mesh->mFaces[i];
-			SDL_Log("Assimp: Face %d: ", i);
 			for (int j = 0; j < face.mNumIndices; j++) {
-				SDL_Log("%d", face.mIndices[j]);
 				indices[i * 3 + j] = face.mIndices[j];
 			}
-			SDL_Log("\n");
 		}
 
 		// Material texture path
