@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 3.30)
 project(LLRI2_Experiments_Vulkan_Helpers)
-add_compile_definitions(MYPROJECT_NAME=${PROJECT_NAME})
 
 # Creates the TARGET for this project, which is the executable.
 # The commands after that require the TARGET to be created first.
@@ -16,6 +15,9 @@ add_executable(${PROJECT_NAME} WIN32
 		src/vk_loader.cpp
 		src/vk_pipelines.cpp
 )
+
+# Macro for the project name.
+target_compile_definitions(${PROJECT_NAME} PRIVATE MYPROJECT_NAME=${PROJECT_NAME})
 
 # Set C++ version
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
