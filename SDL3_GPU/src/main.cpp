@@ -88,7 +88,7 @@ struct MyAppState {
 	SDL_GPUSampler* sampler = nullptr;
 	MyMesh* mesh = nullptr;
 	Uint32 frameNumber = 0;
-	std::array<Uint32, 10'000> frameTimes = {};
+	std::array<Uint32, FRAME_NUMBERS> frameTimes = {};
 };
 
 SDL_GPUShader* LoadShader(

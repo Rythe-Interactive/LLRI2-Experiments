@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.30)
 project(LLRI2_Experiments)
 
+# Macro for the amount of frames to measure for.
+add_compile_definitions(FRAME_NUMBERS=10000)
+
 # Libraries
 
 # Set the output directory for built objects.
