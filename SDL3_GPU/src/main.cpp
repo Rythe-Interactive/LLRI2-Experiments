@@ -668,5 +668,12 @@ void SDL_AppQuit(void* appstate, [[maybe_unused]] SDL_AppResult result) {
 		}
 	}
 
+	Uint64 averageFrameTime = 0;
+	for (const Uint32 frameTime : myAppState->frameTimes) {
+		averageFrameTime += frameTime;
+	}
+	averageFrameTime /= myAppState->frameTimes.size();
+	SDL_Log("Average frame time was: %d ns", averageFrameTime);
+
 	delete myAppState;
 }
