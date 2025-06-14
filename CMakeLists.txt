@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.30)
 project(LLRI2_Experiments)
 
 # Macro for the amount of frames to measure for.
-add_compile_definitions(FRAME_NUMBERS=10000)
+add_compile_definitions(FRAME_NUMBERS=50000)
 
 # Libraries
 
@@ -16,6 +16,7 @@ add_subdirectory(vendored/SDL EXCLUDE_FROM_ALL)
 
 ## Assimp
 set(BUILD_SHARED_LIBS OFF)
+set(ASSIMP_BUILD_X3D_IMPORTER OFF) # Has a compilation error and we don't need it anyway.
 add_subdirectory(vendored/assimp EXCLUDE_FROM_ALL)
 
 ## Volk
