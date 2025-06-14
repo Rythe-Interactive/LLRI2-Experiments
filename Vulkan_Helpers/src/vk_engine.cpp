@@ -199,7 +199,7 @@ SDL_AppResult VulkanEngine::CreateSwapchain(const uint32_t width, const uint32_t
 	vkb::Result<vkb::Swapchain> retVkbSwapchain = swapchainBuilder
 	                                              // .use_default_format_selection()
 	                                              .set_desired_format(desiredFormat)
-	                                              .set_desired_present_mode(VK_PRESENT_MODE_FIFO_RELAXED_KHR)
+	                                              .set_desired_present_mode(VK_PRESENT_MODE_IMMEDIATE_KHR)
 	                                              .set_desired_extent(width, height)
 	                                              .add_image_usage_flags(VK_IMAGE_USAGE_TRANSFER_DST_BIT)
 	                                              .build();
@@ -861,6 +861,8 @@ void VulkanEngine::DestroyImage(const AllocatedImage& allocatedImage) const {
 }
 
 SDL_AppResult VulkanEngine::Draw() {
+	const std::chrono::high_resolution_clock::time_point startTime = std::chrono::high_resolution_clock::now();
+
 	if (resizeRequested) {
 		if (const SDL_AppResult res = ResizeSwapchain(); res != SDL_APP_CONTINUE) {
 			return res;
@@ -952,7 +954,14 @@ SDL_AppResult VulkanEngine::Draw() {
 		return SDL_APP_FAILURE;
 	}
 
+	const std::chrono::high_resolution_clock::time_point endTime = std::chrono::high_resolution_clock::now();
+	const std::chrono::duration<Uint32, std::nano> frameTime = endTime - startTime;
+	frameTimes[frameNumber] = frameTime.count();
+
 	frameNumber++;
+	if (frameNumber >= frameTimes.size()) {
+		return SDL_APP_SUCCESS;
+	}
 
 	return SDL_APP_CONTINUE;
 }
@@ -1008,4 +1017,24 @@ void VulkanEngine::Cleanup(const SDL_AppResult result) {
 
 		SDL_DestroyWindow(window);
 	}
+
+	if (SDL_IOStream* fileStream = SDL_IOFromFile((name + "_frameTimes.txt").c_str(), "w");
+		fileStream == nullptr) {
+		SDL_Log("Couldn't open file for writing: %s", SDL_GetError());
+	} else {
+		for (const Uint32 frameTime : frameTimes) {
+			std::string frameTimeStr = std::to_string(frameTime) + "\n";
+			SDL_WriteIO(fileStream, frameTimeStr.c_str(), frameTimeStr.size());
+		}
+		if (!SDL_CloseIO(fileStream)) {
+			SDL_Log("Couldn't close file: %s", SDL_GetError());
+		}
+	}
+
+	Uint64 averageFrameTime = 0;
+	for (const Uint32 frameTime : frameTimes) {
+		averageFrameTime += frameTime;
+	}
+	averageFrameTime /= frameTimes.size();
+	SDL_Log("Average frame time over %d frames was: %d ns", frameNumber, averageFrameTime);
 }

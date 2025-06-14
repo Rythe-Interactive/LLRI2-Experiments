@@ -38,7 +38,9 @@ class VulkanEngine {
 		DescriptorAllocatorGrowable frameDescriptors;
 	};
 
-	unsigned int frameNumber = 0;
+	Uint32 frameNumber = 0;
+	std::array<Uint32, FRAME_NUMBERS> frameTimes = {};
+
 	std::array<FrameData, 2> frames = {};
 	FrameData& GetCurrentFrame() { return frames[frameNumber % frames.size()]; }
 	VkQueue graphicsQueue = nullptr;
