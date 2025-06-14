@@ -87,6 +87,8 @@ struct MyAppState {
 	SDL_GPUTexture* texture = nullptr;
 	SDL_GPUSampler* sampler = nullptr;
 	MyMesh* mesh = nullptr;
+	Uint32 frameNumber = 0;
+	std::array<Uint32, 10'000> frameTimes = {};
 };
 
 SDL_GPUShader* LoadShader(
@@ -277,6 +279,28 @@ SDL_AppResult SDL_AppInit(void** appstate, [[maybe_unused]] int argc, [[maybe_un
 	if (!SDL_ClaimWindowForGPUDevice(myAppState->device, myAppState->window)) {
 		SDL_Log("Couldn't claim window for GPU device: %s", SDL_GetError());
 		return SDL_APP_FAILURE;
+	}
+
+	SDL_GPUPresentMode presentMode = SDL_GPU_PRESENTMODE_VSYNC;
+	if (SDL_WindowSupportsGPUPresentMode(myAppState->device, myAppState->window, SDL_GPU_PRESENTMODE_IMMEDIATE)) {
+		presentMode = SDL_GPU_PRESENTMODE_IMMEDIATE;
+	} else if (SDL_WindowSupportsGPUPresentMode(myAppState->device, myAppState->window, SDL_GPU_PRESENTMODE_MAILBOX)) {
+		presentMode = SDL_GPU_PRESENTMODE_MAILBOX;
+	}
+	if (!SDL_SetGPUSwapchainParameters(myAppState->device, myAppState->window, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode)) {
+		SDL_Log("Couldn't set swapchain parameters: %s", SDL_GetError());
+		return SDL_APP_FAILURE;
+	}
+	switch (presentMode) {
+		case SDL_GPU_PRESENTMODE_VSYNC:
+			SDL_Log("Using present mode: VSYNC");
+			break;
+		case SDL_GPU_PRESENTMODE_IMMEDIATE:
+			SDL_Log("Using present mode: IMMEDIATE");
+			break;
+		case SDL_GPU_PRESENTMODE_MAILBOX:
+			SDL_Log("Using present mode: MAILBOX");
+			break;
 	}
 
 	// Load mesh
@@ -516,6 +540,7 @@ SDL_AppResult SDL_AppEvent([[maybe_unused]] void* appstate, SDL_Event* event) {
 SDL_AppResult SDL_AppIterate(void* appstate) {
 	MyAppState* myAppState = static_cast<MyAppState*>(appstate);
 
+	std::chrono::high_resolution_clock::time_point startTime = std::chrono::high_resolution_clock::now();
 	SDL_GPUCommandBuffer* commandBuffer = SDL_AcquireGPUCommandBuffer(myAppState->device);
 	if (commandBuffer == nullptr) {
 		SDL_Log("Couldn't AcquireGPUCommandBuffer: %s", SDL_GetError());
@@ -608,6 +633,16 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 		return SDL_APP_FAILURE;
 	}
 
+	std::chrono::high_resolution_clock::time_point endTime = std::chrono::high_resolution_clock::now();
+	std::chrono::duration<Uint32, std::nano> frameTime = endTime - startTime;
+	myAppState->frameTimes[myAppState->frameNumber] = frameTime.count();
+
+	myAppState->frameNumber++;
+	if (myAppState->frameNumber >= myAppState->frameTimes.size()) {
+		return SDL_APP_SUCCESS;
+	}
+
+	SDL_Log("Frame: %u, Time: %u ns", myAppState->frameNumber, myAppState->frameTimes[myAppState->frameNumber - 1]);
 	return SDL_APP_CONTINUE;
 }
 
@@ -620,6 +655,19 @@ void SDL_AppQuit(void* appstate, [[maybe_unused]] SDL_AppResult result) {
 	SDL_ReleaseGPUTexture(myAppState->device, myAppState->texture);
 	SDL_ReleaseGPUTexture(myAppState->device, myAppState->depthTexture);
 	SDL_ReleaseGPUSampler(myAppState->device, myAppState->sampler);
+
+	if (SDL_IOStream* fileStream = SDL_IOFromFile(QUOTE(MYPROJECT_NAME) "_frameTimes.txt", "w");
+		fileStream == nullptr) {
+		SDL_Log("Couldn't open file for writing: %s", SDL_GetError());
+	} else {
+		for (const Uint32 frameTime : myAppState->frameTimes) {
+			std::string frameTimeStr = std::to_string(frameTime) + "\n";
+			SDL_WriteIO(fileStream, frameTimeStr.c_str(), frameTimeStr.size());
+		}
+		if (!SDL_CloseIO(fileStream)) {
+			SDL_Log("Couldn't close file: %s", SDL_GetError());
+		}
+	}
 
 	delete myAppState;
 }
