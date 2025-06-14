@@ -673,7 +673,7 @@ void SDL_AppQuit(void* appstate, [[maybe_unused]] SDL_AppResult result) {
 		averageFrameTime += frameTime;
 	}
 	averageFrameTime /= myAppState->frameTimes.size();
-	SDL_Log("Average frame time was: %d ns", averageFrameTime);
+	SDL_Log("Average frame time over %d frames was: %d ns", FRAME_NUMBERS, averageFrameTime);
 
 	delete myAppState;
 }
