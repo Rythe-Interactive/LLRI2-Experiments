@@ -623,7 +623,7 @@ SDL_Surface* VulkanEngine::LoadImage(const std::filesystem::path& imagePath, con
 	if (desiredChannels == 4) {
 		format = SDL_PIXELFORMAT_ABGR8888;
 	} else {
-		SDL_assert(!"Unexpected desiredChannels");
+		SDL_Log("Unexpected desiredChannels");
 		SDL_DestroySurface(result);
 		return nullptr;
 	}
