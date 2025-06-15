@@ -954,8 +954,6 @@ SDL_AppResult VulkanEngine::Draw() {
 		return SDL_APP_FAILURE;
 	}
 
-	vkDeviceWaitIdle(device);
-
 	const std::chrono::high_resolution_clock::time_point endTime = std::chrono::high_resolution_clock::now();
 	const std::chrono::duration<Uint32, std::nano> frameTime = endTime - startTime;
 	frameTimes[frameNumber] = frameTime.count();

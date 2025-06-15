@@ -629,8 +629,6 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 		return SDL_APP_FAILURE;
 	}
 
-	SDL_WaitForGPUIdle(myAppState->device);
-
 	std::chrono::high_resolution_clock::time_point endTime = std::chrono::high_resolution_clock::now();
 	std::chrono::duration<Uint32, std::nano> frameTime = endTime - startTime;
 	myAppState->frameTimes[myAppState->frameNumber] = frameTime.count();
