@@ -1,4 +1,5 @@
 # LLRI2 Experiments
+_This Git repository is online at https://github.com/Rythe-Interactive/LLRI2-Experiments_
 
 This is a repo with multiple C++ projects, all written during
 the exploration phase of the rewrite process of the LLRI.
