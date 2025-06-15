@@ -6,6 +6,10 @@ the exploration phase of the rewrite process of the LLRI.
 These programs should all do the same thing, but using different APIs.
 The goal is to compare the API paradigms and see which one is the best for the new LLRI.
 
+This repo has two branches:
+- [`comparison`](https://github.com/Rythe-Interactive/LLRI2-Experiments/tree/comparison): This branch has all experiments doing the exact same thing, so they can be compared better.
+- [`doom`](https://github.com/Rythe-Interactive/LLRI2-Experiments/tree/doom): This branch has Doom (1993) ported to the Vulkan_Helpers experiment! It is fully playable, if you provide a WAD file.
+
 ## Cloning & Building
 
 Make sure to clone this repository recursively,
